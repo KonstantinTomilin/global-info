@@ -27,7 +27,12 @@ interface OrionClassicAuditRunRecord {
   caseId: string;
   runId: string;
   reportMode: "classic_orion_audit_r10_11";
-  status: "completed" | "failed" | "running";
+  status:
+    | "completed"
+    | "failed"
+    | "running"
+    | "failed_quality_gate"
+    | "completed_internal_preview_with_warnings";
   createdAt: string;
   completedAt: string | null;
   outputRoot: string;
@@ -48,7 +53,13 @@ export interface OrionClassicAuditReportSummary {
   ok: boolean;
   uiEnabled: boolean;
   reportMode: "classic_orion_audit_r10_11";
-  status: "completed" | "failed" | "running" | "empty";
+  status:
+    | "completed"
+    | "failed"
+    | "running"
+    | "empty"
+    | "failed_quality_gate"
+    | "completed_internal_preview_with_warnings";
   runId: string | null;
   createdAt: string | null;
   completedAt: string | null;
@@ -154,7 +165,9 @@ function toPublicSummary(record: OrionClassicAuditRunRecord | null): OrionClassi
   };
 
   return {
-    ok: record.status === "completed",
+    ok:
+      record.status === "completed" ||
+      record.status === "completed_internal_preview_with_warnings",
     uiEnabled: isOrionClassicAuditUiEnabled(),
     reportMode: record.reportMode,
     status: record.status,
@@ -282,16 +295,29 @@ async function executeClassicAuditReport(input: {
     throw err;
   }
 
-  // Persist downloadable artifacts even on soft FAIL (e.g. page-range QA), so the client can review the PDF.
+  // Persist downloadable artifacts when render produced files; hard QA gate blocks "completed".
   const artifacts = await persistArtifacts(input.caseId, input.uiRunId, input.runOutputRoot);
   const hasArtifacts = Boolean(artifacts.client_pdf || artifacts.client_pptx);
-  const softFailWithArtifacts = result.verdict !== "PASS" && hasArtifacts;
+
+  let status: OrionClassicAuditRunRecord["status"];
+  if (result.qualityGateStatus === "failed_quality_gate") {
+    status = "failed_quality_gate";
+  } else if (result.qualityGateStatus === "completed_internal_preview_with_warnings") {
+    status = "completed_internal_preview_with_warnings";
+  } else if (result.verdict === "PASS") {
+    status = "completed";
+  } else if (hasArtifacts) {
+    // Legacy classic path: soft FAIL with artifacts — preview only, not a hard gate pass.
+    status = "completed_internal_preview_with_warnings";
+  } else {
+    status = "failed";
+  }
 
   const record: OrionClassicAuditRunRecord = {
     caseId: input.caseId,
     runId: input.uiRunId,
     reportMode: "classic_orion_audit_r10_11",
-    status: result.verdict === "PASS" || softFailWithArtifacts ? "completed" : "failed",
+    status,
     createdAt: input.createdAt,
     completedAt: new Date().toISOString(),
     outputRoot: input.runOutputRoot,

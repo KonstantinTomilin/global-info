@@ -26,9 +26,16 @@ export async function renderOrionGoldenArtifacts(input: {
   pptxOut: string;
   pdfOut: string;
   pagesOut: string;
+  ceoDemoMode?: boolean;
 }): Promise<{ pdfExportMode: "libreoffice" | "fitz-fallback" | "unknown"; warnings: string[] }> {
   const payload = {
-    reportSpec: input.reportSpec,
+    reportSpec: {
+      ...input.reportSpec,
+      qaMetadata: {
+        ...(input.reportSpec.qaMetadata ?? {}),
+        ceoDemoMode: input.ceoDemoMode ?? false,
+      },
+    },
     deckManifest: input.deckManifest,
     assets: input.assets
       .filter((a) => a.status === "ready" || a.imageData || a.imageUrl)

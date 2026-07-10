@@ -98,6 +98,9 @@ async function loadCachedSyntheticAsset(input: {
     return {
       ...asset,
       assetRef: `${prefix}_google_${row.id}`,
+      region: input.region,
+      provider: "serper",
+      surface: "organic",
     };
   } catch {
     return null;
@@ -190,6 +193,9 @@ async function buildOneProviderSlot(input: {
       status: "ready",
     }),
     assetRef: `${prefix}_google_${synthetic.assetId}`,
+    region: input.slot.region,
+    provider: "serper",
+    surface: "organic",
   };
 
   return {

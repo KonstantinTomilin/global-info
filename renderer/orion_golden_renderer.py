@@ -34,6 +34,14 @@ SLIDE_H = 6858000
 FOOTER_Y = 6420000
 CONTENT_BOTTOM = 6200000
 
+# CEO demo 16:10 (12×7.5 in)
+CEO_SLIDE_W = 10972800
+CEO_SLIDE_H = 6858000
+CEO_MARGIN_X = 500000
+CEO_CONTENT_W = CEO_SLIDE_W - CEO_MARGIN_X * 2
+CEO_FOOTER_Y = CEO_SLIDE_H - 450000
+CEO_CONTENT_BOTTOM = CEO_SLIDE_H - 650000
+
 NAVY = RGBColor(0x0B, 0x1A, 0x33)
 TITLE_COLOR = RGBColor(0xF8, 0xFA, 0xFC)
 BODY_COLOR = RGBColor(0x33, 0x41, 0x55)
@@ -78,20 +86,45 @@ def _clip_words(text: str, max_chars: int) -> str:
 
 
 class _Ctx:
-    def __init__(self, prs: Presentation, page: int, total: int):
+    def __init__(
+        self,
+        prs: Presentation,
+        page: int,
+        total: int,
+        *,
+        ceo_mode: bool = False,
+        slide_meta: dict[str, Any] | None = None,
+    ):
         self.prs = prs
         self.page = page
         self.total = total
+        self.ceo_mode = ceo_mode
+        self.slide_meta = slide_meta or {}
+        self.margin_x = CEO_MARGIN_X if ceo_mode else MARGIN_X
+        self.content_w = CEO_CONTENT_W if ceo_mode else CONTENT_W
+        self.footer_y = CEO_FOOTER_Y if ceo_mode else FOOTER_Y
+        self.content_bottom = CEO_CONTENT_BOTTOM if ceo_mode else CONTENT_BOTTOM
         layout = prs.slide_layouts[6] if len(prs.slide_layouts) > 6 else prs.slide_layouts[0]
         self.slide = prs.slides.add_slide(layout)
 
     def footer(self) -> None:
-        box = self.slide.shapes.add_textbox(Emu(MARGIN_X), Emu(FOOTER_Y), Emu(CONTENT_W), Emu(250000))
+        box = self.slide.shapes.add_textbox(
+            Emu(self.margin_x), Emu(self.footer_y), Emu(self.content_w), Emu(250000)
+        )
         tf = box.text_frame
         p = tf.paragraphs[0]
         p.alignment = PP_ALIGN.RIGHT
         r = p.add_run()
-        r.text = f"{self.page} / {self.total}"
+        meta = self.slide_meta if isinstance(self.slide_meta, dict) else {}
+        if self.ceo_mode:
+            data_mode = _safe(meta.get("dataMode") or "")
+            run_tail = _safe(str(meta.get("reportRunId") or ""))[:12]
+            extra = f" · {data_mode}" if data_mode else ""
+            if run_tail:
+                extra += f" · {run_tail}"
+            r.text = f"{self.page} / {self.total}{extra}"
+        else:
+            r.text = f"{self.page} / {self.total}"
         r.font.name = FONT
         r.font.size = Pt(FS_CAPTION)
         r.font.color.rgb = MUTED_COLOR
@@ -107,7 +140,7 @@ class _Ctx:
         fill.fore_color.rgb = WHITE
 
     def title(self, text: str, y: int = 280000, color: RGBColor = TITLE_COLOR, size: int = FS_TITLE) -> int:
-        box = self.slide.shapes.add_textbox(Emu(MARGIN_X), Emu(y), Emu(CONTENT_W), Emu(900000))
+        box = self.slide.shapes.add_textbox(Emu(self.margin_x), Emu(y), Emu(self.content_w), Emu(900000))
         tf = box.text_frame
         tf.word_wrap = True
         p = tf.paragraphs[0]
@@ -121,8 +154,8 @@ class _Ctx:
 
     def body(self, text: str, y: int, max_h: int = 900000, color: RGBColor = BODY_COLOR) -> int:
         # Cap height so body never collides with footer
-        avail = max(200000, min(max_h, CONTENT_BOTTOM - y))
-        box = self.slide.shapes.add_textbox(Emu(MARGIN_X), Emu(y), Emu(CONTENT_W), Emu(avail))
+        avail = max(200000, min(max_h, self.content_bottom - y))
+        box = self.slide.shapes.add_textbox(Emu(self.margin_x), Emu(y), Emu(self.content_w), Emu(avail))
         tf = box.text_frame
         tf.word_wrap = True
         # Split long narrative into short paragraphs for readability
@@ -148,8 +181,8 @@ class _Ctx:
         return y + used_h
 
     def bullets(self, items: list[str], y: int, color: RGBColor = BODY_COLOR, max_items: int = 8, max_chars: int = 280) -> int:
-        avail = max(400000, CONTENT_BOTTOM - y)
-        box = self.slide.shapes.add_textbox(Emu(MARGIN_X), Emu(y), Emu(CONTENT_W), Emu(avail))
+        avail = max(400000, self.content_bottom - y)
+        box = self.slide.shapes.add_textbox(Emu(self.margin_x), Emu(y), Emu(self.content_w), Emu(avail))
         tf = box.text_frame
         tf.word_wrap = True
         first = True
@@ -169,8 +202,10 @@ class _Ctx:
         return y + avail
 
     def card(self, y: int, h: int = 4200000) -> None:
-        avail = max(300000, min(h, CONTENT_BOTTOM - y))
-        shape = self.slide.shapes.add_shape(1, Emu(MARGIN_X), Emu(y), Emu(CONTENT_W), Emu(avail))
+        avail = max(300000, min(h, self.content_bottom - y))
+        shape = self.slide.shapes.add_shape(
+            1, Emu(self.margin_x), Emu(y), Emu(self.content_w), Emu(avail)
+        )
         shape.fill.solid()
         shape.fill.fore_color.rgb = CARD_BG
         shape.line.color.rgb = CARD_BORDER
@@ -188,7 +223,9 @@ def _embed_image(ctx: _Ctx, asset: dict[str, Any] | None, y: int, h: int = 48000
     if img_data:
         img_path = Path(tempfile.gettempdir()) / f"orion-golden-{asset.get('assetRef')}.png"
         img_path.write_bytes(base64.b64decode(str(img_data)))
-        ctx.slide.shapes.add_picture(str(img_path), Emu(MARGIN_X), Emu(y), width=Emu(CONTENT_W), height=Emu(h))
+        ctx.slide.shapes.add_picture(
+            str(img_path), Emu(ctx.margin_x), Emu(y), width=Emu(ctx.content_w), height=Emu(h)
+        )
         try:
             img_path.unlink(missing_ok=True)
         except OSError:
@@ -202,11 +239,51 @@ def _embed_image(ctx: _Ctx, asset: dict[str, Any] | None, y: int, h: int = 48000
 
 def _render_slide(ctx: _Ctx, slide: dict[str, Any], assets: dict[str, dict[str, Any]]) -> None:
     template = str(slide.get("template") or "")
-    title = _safe(slide.get("title") or "ORION")
-    narrative = _safe(slide.get("narrative") or "")
-    bullets = [_safe(b) for b in slide.get("bullets") or [] if _safe(b)]
+    title = _safe(slide.get("title") or "ORION")[:70]
+    narrative = _safe(slide.get("narrative") or "")[:420]
+    bullets = [_safe(b)[:130] for b in slide.get("bullets") or [] if _safe(b)]
     refs = slide.get("assetRefs") or []
     primary = assets.get(str(refs[0])) if refs else None
+
+    if template == "ceo_kpi_cards":
+        ctx.light_bg()
+        y = ctx.title(title, 280000, NAVY, FS_SECTION)
+        ctx.card(y, h=ctx.content_bottom - y - 80000)
+        ctx.bullets(bullets[:5], y + 100000, max_items=5, max_chars=130)
+        return
+
+    if template == "ceo_status_table":
+        ctx.light_bg()
+        y = ctx.title(title, 280000, NAVY, FS_SECTION)
+        ctx.card(y, h=min(3200000, ctx.content_bottom - y - 80000))
+        ctx.bullets(bullets[:5], y + 100000, max_items=5, max_chars=130)
+        return
+
+    if template == "ceo_compliance_profile":
+        ctx.light_bg()
+        y = ctx.title(title, 280000, NAVY)
+        if primary and primary.get("imageData"):
+            _embed_image(ctx, primary, y + 60000, h=min(5000000, ctx.content_bottom - y - 120000))
+        else:
+            ctx.card(y + 60000, h=min(3600000, ctx.content_bottom - y - 120000))
+            ctx.bullets(bullets[:5], y + 160000, max_items=5, max_chars=130)
+        return
+
+    ceo_aliases = {
+        "ceo_cover": "orion_golden_cover",
+        "ceo_toc": "orion_golden_toc",
+        "ceo_executive": "orion_golden_executive_card",
+        "ceo_executive_dashboard": "orion_golden_audit_dashboard",
+        "ceo_region_divider": "orion_golden_region_divider",
+        "ceo_serp_evidence": "orion_golden_serp_screenshot",
+        "ceo_media_grid": "orion_golden_image_grid",
+        "ceo_knowledge_panel": "orion_golden_lexis_visual_page",
+        "ceo_serp_matrix": "orion_golden_search_table",
+        "ceo_autocomplete": "orion_golden_search_table",
+    }
+    if template in ceo_aliases:
+        template = ceo_aliases[template]
+        slide = {**slide, "template": template, "title": title, "narrative": narrative, "bullets": bullets}
 
     if template == "orion_golden_cover":
         ctx.dark_bg()
@@ -232,21 +309,21 @@ def _render_slide(ctx: _Ctx, slide: dict[str, Any], assets: dict[str, dict[str, 
         # Narrative-only slide (part 1) vs themes slide: give narrative more vertical room.
         narr = narrative.strip()
         if narr and not bullets:
-            card_h = min(5200000, max(1600000, CONTENT_BOTTOM - y - 200000))
+            card_h = min(5200000, max(1600000, ctx.content_bottom - y - 200000))
             ctx.card(y, h=card_h)
             # Do not hard-clip the full résumé; body splits paragraphs itself.
             ctx.body(narr, y + 100000, max_h=card_h - 160000)
             return
         if narr:
-            narr_show = _clip_words(narr, 2200)
+            narr_show = _clip_words(narr, 420 if ctx.ceo_mode else 2200)
             card_h = min(2800000, max(800000, len(narr_show) * 1600 + 200000))
-            max_card = max(800000, CONTENT_BOTTOM - y - (1100000 if bullets else 200000))
+            max_card = max(800000, ctx.content_bottom - y - (1100000 if bullets else 200000))
             card_h = min(card_h, max_card)
             ctx.card(y, h=card_h)
             y = ctx.body(narr_show, y + 100000, max_h=card_h - 160000)
             y = y + 140000
         if bullets:
-            ctx.bullets(bullets, y, max_items=7, max_chars=280)
+            ctx.bullets(bullets, y, max_items=5 if ctx.ceo_mode else 7, max_chars=130 if ctx.ceo_mode else 280)
         return
 
     if template == "orion_golden_risk_matrix":
@@ -259,8 +336,8 @@ def _render_slide(ctx: _Ctx, slide: dict[str, Any], assets: dict[str, dict[str, 
             color=MUTED_COLOR,
         )
         y = y + 560000
-        ctx.card(y, h=CONTENT_BOTTOM - y - 80000)
-        ctx.bullets(bullets or ["Существенных подтверждённых тем риска не выявлено."], y + 100000, max_items=8)
+        ctx.card(y, h=ctx.content_bottom - y - 80000)
+        ctx.bullets(bullets or ["Существенных подтверждённых тем риска не выявлено."], y + 100000, max_items=10 if ctx.ceo_mode else 8)
         return
 
     if template == "orion_golden_region_divider":
@@ -284,7 +361,7 @@ def _render_slide(ctx: _Ctx, slide: dict[str, Any], assets: dict[str, dict[str, 
         for idx, ref in enumerate(refs[:6]):
             row = idx // cols
             col = idx % cols
-            cx = MARGIN_X + col * (cell_w + gap)
+            cx = ctx.margin_x + col * (cell_w + gap)
             cy = y + row * (cell_h + gap)
             asset = assets.get(str(ref))
             if asset and asset.get("imageData"):
@@ -327,12 +404,12 @@ def _render_slide(ctx: _Ctx, slide: dict[str, Any], assets: dict[str, dict[str, 
             y = ctx.body(_clip_words(narrative, 320), y, max_h=520000, color=MUTED_COLOR)
             y = y + 60000
         # Dense SERP / suggestion / heat-grid rows
-        avail = max(400000, CONTENT_BOTTOM - y)
-        box = ctx.slide.shapes.add_textbox(Emu(MARGIN_X), Emu(y), Emu(CONTENT_W), Emu(avail))
+        avail = max(400000, ctx.content_bottom - y)
+        box = ctx.slide.shapes.add_textbox(Emu(ctx.margin_x), Emu(y), Emu(ctx.content_w), Emu(avail))
         tf = box.text_frame
         tf.word_wrap = True
         first = True
-        for bullet in bullets[:18]:
+        for bullet in bullets[: (10 if ctx.ceo_mode else 18)]:
             p = tf.paragraphs[0] if first else tf.add_paragraph()
             first = False
             p.space_before = Pt(2)
@@ -373,7 +450,7 @@ def _render_slide(ctx: _Ctx, slide: dict[str, Any], assets: dict[str, dict[str, 
     # Prefer bullets for dense content; keep narrative short to avoid overlap
     short_narrative = _clip_words(narrative, 480) if narrative else ""
     if short_narrative and not bullets:
-        ctx.body(short_narrative, y, max_h=CONTENT_BOTTOM - y - 100000)
+        ctx.body(short_narrative, y, max_h=ctx.content_bottom - y - 100000)
         return
     if short_narrative:
         y = ctx.body(short_narrative, y, max_h=900000)
@@ -428,6 +505,16 @@ def _export_png_pages(pdf_path: Path) -> list[dict[str, Any]]:
     return pages
 
 
+def _is_ceo_demo_mode(payload: dict[str, Any]) -> bool:
+    report_spec = payload.get("reportSpec") or {}
+    qa = report_spec.get("qaMetadata") or {}
+    if qa.get("ceoDemoMode"):
+        return True
+    deck = payload.get("deckManifest") or {}
+    slides = deck.get("finalSlides") or []
+    return bool(slides) and str(slides[0].get("template") or "").startswith("ceo_")
+
+
 def render_orion_golden(payload: dict[str, Any]) -> dict[str, Any]:
     deck = payload.get("deckManifest") or {}
     report_spec = payload.get("reportSpec") or {}
@@ -435,15 +522,21 @@ def render_orion_golden(payload: dict[str, Any]) -> dict[str, Any]:
     if not slides:
         raise ValueError("deckManifest.finalSlides is empty")
 
+    ceo_mode = _is_ceo_demo_mode(payload)
     assets = _asset_map(payload)
     subject = (report_spec.get("subject") or {}).get("displayName") or "Цифровой профиль"
     total = len(slides)
     prs = Presentation()
-    prs.slide_width = Emu(9144000)
-    prs.slide_height = Emu(SLIDE_H)
+    if ceo_mode:
+        prs.slide_width = Emu(CEO_SLIDE_W)
+        prs.slide_height = Emu(CEO_SLIDE_H)
+    else:
+        prs.slide_width = Emu(9144000)
+        prs.slide_height = Emu(SLIDE_H)
 
     for idx, slide in enumerate(slides, start=1):
-        ctx = _Ctx(prs, idx, total)
+        ceo_meta = slide.get("ceoMeta") if isinstance(slide.get("ceoMeta"), dict) else {}
+        ctx = _Ctx(prs, idx, total, ceo_mode=ceo_mode, slide_meta=ceo_meta)
         _render_slide(ctx, slide, assets)
         ctx.footer()
 

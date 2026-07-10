@@ -284,6 +284,9 @@ async function buildCapturedSerpAssets(ctx: OrionRealCaseContext): Promise<Repor
           imageData: buf.toString("base64"),
           evidenceRefs: [`screenshot:${reportSnap.id || reportSnap.storageKey}`],
           status: "ready",
+          region: "RU",
+          provider,
+          surface: "organic",
         });
       }
     } catch {
@@ -309,6 +312,9 @@ async function buildCapturedSerpAssets(ctx: OrionRealCaseContext): Promise<Repor
         imageData: buf.toString("base64"),
         evidenceRefs: [`screenshot:${row.id}`],
         status: "ready",
+        region,
+        provider,
+        surface: "organic",
       });
     } catch {
       // Skip unreadable storage keys

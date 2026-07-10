@@ -11,10 +11,15 @@ import { ORION_GOLDEN_BLUEPRINT } from "../blueprint/orion-golden-blueprint";
 import type { OrionGoldenDeckManifest } from "../composer/orion-deck-composer";
 import type { FullEvidenceInventory } from "../evidence/full-evidence-inventory";
 
-export type OrionVisualReportMode = "legacy_full" | "client_audit" | "classic_orion_audit";
+export type OrionVisualReportMode =
+  | "legacy_full"
+  | "client_audit"
+  | "classic_orion_audit"
+  | "ceo_demo_first36";
 
 export const CLIENT_AUDIT_PAGE_RANGE = { min: 30, max: 45 } as const;
 export const CLASSIC_ORION_AUDIT_PAGE_RANGE = { min: 45, max: 120 } as const;
+export const CEO_DEMO_FIRST36_PAGE_RANGE = { min: 36, max: 36 } as const;
 
 export function resolveOrionVisualReportMode(input?: {
   reportMode?: OrionVisualReportMode;
@@ -22,6 +27,7 @@ export function resolveOrionVisualReportMode(input?: {
 }): OrionVisualReportMode {
   if (input?.reportMode) return input.reportMode;
   const env = input?.env ?? process.env;
+  if (env.ORION_CEO_DEMO_MODE === "1") return "ceo_demo_first36";
   if (env.ORION_CLASSIC_AUDIT_MODE === "1") return "classic_orion_audit";
   if (
     env.R10_RENDER_FROM_CLIENT_CONTENT === "1" ||
@@ -33,6 +39,7 @@ export function resolveOrionVisualReportMode(input?: {
 }
 
 export function expectedPageRangeForMode(mode: OrionVisualReportMode): { min: number; max: number } {
+  if (mode === "ceo_demo_first36") return { ...CEO_DEMO_FIRST36_PAGE_RANGE };
   if (mode === "classic_orion_audit") return { ...CLASSIC_ORION_AUDIT_PAGE_RANGE };
   if (mode === "client_audit") return { ...CLIENT_AUDIT_PAGE_RANGE };
   return {
@@ -89,6 +96,9 @@ export function inspectOrionGoldenVisualQuality(input: {
     pageOk =
       pageCount >= expectedPageRange.min && pageCount <= expectedPageRange.max + 5;
     pageDetail = `${pageCount} (client_audit target ${expectedPageRange.min}-${expectedPageRange.max})`;
+  } else if (reportMode === "ceo_demo_first36") {
+    pageOk = pageCount === expectedPageRange.min;
+    pageDetail = `${pageCount} (ceo_demo_first36 exact ${expectedPageRange.min})`;
   } else if (reportMode === "classic_orion_audit") {
     pageOk =
       pageCount >= expectedPageRange.min && pageCount <= expectedPageRange.max;

@@ -17,6 +17,12 @@ export type OrionGoldenDeckSlide = {
   bullets?: string[];
   narrative?: string;
   assetRefs?: string[];
+  ceoMeta?: {
+    referencePage: number;
+    region?: string;
+    dataMode?: string;
+    reportRunId?: string;
+  };
 };
 
 export type OrionGoldenDeckManifest = {

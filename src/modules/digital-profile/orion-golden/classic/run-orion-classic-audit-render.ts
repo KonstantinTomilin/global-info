@@ -21,6 +21,14 @@ import { buildOrionThemeSet } from "./orion-classic-theme-set";
 import { inspectClassicOrionAuditQuality } from "./orion-classic-audit-quality-inspection";
 import { isClientProductionFinalize } from "./orion-classic-live-serp-assets";
 import { evaluateClassicProviderSerpGate } from "./orion-classic-provider-serp-assets";
+import { isCeoDemoMode } from "./ceo-demo-mode";
+import { buildReportEvidenceSnapshot } from "./report-evidence-snapshot";
+import { buildMetricRegistry } from "./report-metric-registry";
+import { composeOrionCeoFirst36Deck } from "./compose-orion-ceo-first36-deck";
+import { materializeReportAssetImages } from "./materialize-report-assets";
+import { inspectCeoFirst36Quality } from "./inspect-ceo-first36-quality";
+import { CEO_FIRST_36_SLIDE_COUNT } from "./orion-first-36-slide-registry.v1";
+import type { OrionGoldenReportSpec } from "../report-spec/orion-report-spec";
 import type { ExecutiveSynthesisOutput } from "../gpt/orion-executive-synthesis-from-sections";
 import type { SectionDerivedRiskMatrix } from "../sections/orion-risk-matrix-from-sections";
 
@@ -80,7 +88,12 @@ export async function runOrionClassicAuditRender(options: {
   visualPassed: boolean;
   classicQaPassed: boolean;
   warnings: string[];
+  qualityGateStatus?: "completed" | "failed_quality_gate" | "completed_internal_preview_with_warnings";
+  ceoDemoMode?: boolean;
 }> {
+  if (isCeoDemoMode()) {
+    return runOrionCeoDemoRender(options);
+  }
   const { caseId, outputRoot } = options;
   mkdirSync(outputRoot, { recursive: true });
 
@@ -222,5 +235,150 @@ export async function runOrionClassicAuditRender(options: {
     visualPassed: visual.passed,
     classicQaPassed: classicQa.passed,
     warnings,
+  };
+}
+
+function formatReportDateLabel(iso?: string): string {
+  const d = iso ? new Date(iso) : new Date();
+  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+}
+
+async function runOrionCeoDemoRender(options: {
+  caseId: string;
+  outputRoot: string;
+  clientContent?: OrionClientContent;
+}): Promise<{
+  caseId: string;
+  outputRoot: string;
+  slideCount: number;
+  pageCount: number;
+  verdict: "PASS" | "FAIL";
+  clientPolicyStatus: string;
+  visualPassed: boolean;
+  classicQaPassed: boolean;
+  warnings: string[];
+  qualityGateStatus: "completed" | "failed_quality_gate" | "completed_internal_preview_with_warnings";
+  ceoDemoMode: true;
+}> {
+  const { caseId, outputRoot } = options;
+  mkdirSync(outputRoot, { recursive: true });
+
+  const clientContent = options.clientContent ?? loadPostReviewClientContent(caseId);
+  const ctx = await loadRealCaseContext(caseId, { locale: "ru", buildFreshReportJson: false });
+  const reportRunId = clientContent.reportRunId;
+
+  const snapshot = await buildReportEvidenceSnapshot({ caseId, reportRunId, ctx });
+  const metrics = buildMetricRegistry(
+    snapshot,
+    ctx.databaseProfiles.map((p) => ({
+      provider: p.provider,
+      status: p.reviewStatus ?? p.matchType,
+    }))
+  );
+
+  writeJson(join(outputRoot, "report-evidence-snapshot.json"), snapshot);
+  writeJson(join(outputRoot, "report-metric-registry.json"), metrics);
+
+  const rawAssets = await buildOrionClassicAuditAssets({
+    ctx,
+    reportRunId,
+    audience: "internal_preview",
+    allowSyntheticSerp: true,
+  });
+  const assets = await materializeReportAssetImages({ caseId, assets: rawAssets });
+  writeJson(join(outputRoot, "report-assets.json"), assets);
+
+  const deckManifest = composeOrionCeoFirst36Deck({
+    subjectName: clientContent.subject.displayName,
+    reportRunId,
+    snapshot,
+    metrics,
+    assets,
+    reportDateLabel: formatReportDateLabel(clientContent.generatedAt),
+  });
+  writeJson(join(outputRoot, "final-deck-manifest.json"), deckManifest);
+
+  const reportSpec = {
+    subject: { displayName: clientContent.subject.displayName },
+    executiveSummary: {
+      globalRiskLevel: "moderate" as const,
+      headline: `CEO Demo — ${clientContent.subject.displayName}`,
+      narrative: metrics.caveats.join(" "),
+    },
+    qaMetadata: {
+      ceoDemoMode: true,
+      reportRunId,
+      dataMode: snapshot.dataMode,
+      warnings: snapshot.warnings,
+    },
+    registrySections: [],
+  } as unknown as OrionGoldenReportSpec;
+
+  writeJson(join(outputRoot, "orion-ceo-report-spec.json"), reportSpec);
+
+  const renderResult = await renderOrionGoldenArtifacts({
+    reportSpec,
+    deckManifest,
+    assets,
+    pptxOut: join(outputRoot, "rendered-client.pptx"),
+    pdfOut: join(outputRoot, "rendered-client.pdf"),
+    pagesOut: join(outputRoot, "pages-png"),
+    ceoDemoMode: true,
+  });
+
+  const visual = inspectOrionGoldenVisualQuality({
+    outputRoot,
+    deckManifest,
+    inventory: buildFullEvidenceInventory({
+      caseId,
+      reportRunId,
+      ctx,
+    }),
+    pdfExportMode: renderResult.pdfExportMode,
+    reportMode: "ceo_demo_first36",
+  });
+  writeJson(join(outputRoot, "visual-qa-inspection.json"), visual);
+
+  const ceoQa = inspectCeoFirst36Quality({
+    deckManifest,
+    metrics,
+    assets,
+    outputRoot,
+  });
+  writeJson(join(outputRoot, "ceo-first36-quality-inspection.json"), ceoQa);
+
+  const clientPolicy = inspectOrionGoldenClientPolicy({ reportSpec, deckManifest });
+  writeJson(join(outputRoot, "client-policy-inspection.json"), clientPolicy);
+
+  const verdict =
+    ceoQa.passed && visual.passed && deckManifest.slideCount === CEO_FIRST_36_SLIDE_COUNT
+      ? "PASS"
+      : "FAIL";
+
+  const qualityGateStatus: "completed" | "failed_quality_gate" | "completed_internal_preview_with_warnings" =
+    ceoQa.hardFailed
+      ? "failed_quality_gate"
+      : verdict === "PASS"
+        ? "completed"
+        : "completed_internal_preview_with_warnings";
+
+  const warnings = [
+    ...ceoQa.issues,
+    ...visual.checks.filter((c) => !c.passed).map((c) => `${c.id}: ${c.detail}`),
+    ...(renderResult.warnings ?? []),
+  ];
+
+  return {
+    caseId,
+    outputRoot,
+    slideCount: deckManifest.slideCount,
+    pageCount: visual.pageCount,
+    verdict,
+    clientPolicyStatus: clientPolicy.passed ? "PASS" : "FAIL",
+    visualPassed: visual.passed,
+    classicQaPassed: ceoQa.passed,
+    warnings,
+    qualityGateStatus,
+    ceoDemoMode: true,
   };
 }

@@ -17,6 +17,8 @@ export type ReportAssetKind =
   | "knowledge_panel"
   | "lexis_visual_page";
 
+export type ReportAssetRegion = "RU" | "UAE" | "GLOBAL" | "COMPLIANCE";
+
 export type ReportAssetV1 = {
   assetRef: string;
   kind: ReportAssetKind;
@@ -26,6 +28,14 @@ export type ReportAssetV1 = {
   imageUrl?: string;
   evidenceRefs: string[];
   status: "ready" | "missing";
+  region?: ReportAssetRegion;
+  provider?: string;
+  surface?: string;
+  queryId?: string;
+  sourceUrl?: string;
+  mimeType?: string;
+  sha256?: string;
+  failureReason?: string;
   /** LIVE SERP capture metadata (optional). */
   geoStatus?: "VERIFIED" | "UNVERIFIED" | "UNKNOWN";
   connectionMode?: "PROXY" | "DIRECT";
