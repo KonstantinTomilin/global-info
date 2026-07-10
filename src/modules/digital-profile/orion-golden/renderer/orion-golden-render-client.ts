@@ -51,6 +51,7 @@ export async function renderOrionGoldenArtifacts(input: {
   };
 
   const url = `${digitalProfileConfig.rendererUrl}/orion/render-golden`;
+  let httpFailure = "";
   try {
     const res = await fetch(url, {
       method: "POST",
@@ -79,19 +80,45 @@ export async function renderOrionGoldenArtifacts(input: {
             : "unknown";
       return { pdfExportMode: mode, warnings: json.warnings ?? [] };
     }
-  } catch {
-    // local fallback
+    const body = (await res.text().catch(() => "")).slice(0, 300);
+    httpFailure = `http ${res.status}${body ? `: ${body}` : ""}`;
+    console.error("[orion-golden-render] remote renderer rejected", { url, status: res.status, body });
+  } catch (err) {
+    httpFailure = err instanceof Error ? err.message : String(err);
+    console.error("[orion-golden-render] remote renderer unreachable", { url, error: httpFailure });
   }
 
   const tmpPayload = join(dirname(input.pptxOut), "golden-render-payload.json");
   writeFileSync(tmpPayload, JSON.stringify(payload));
   const script = join(process.cwd(), "scripts", "render-orion-golden-artifacts.py");
-  const proc = spawnSync("python", [script, tmpPayload, input.pptxOut, input.pdfOut, input.pagesOut], {
-    encoding: "utf-8",
-    cwd: process.cwd(),
-  });
-  if (proc.status !== 0) {
-    throw new Error(`golden-render-failed:${proc.stderr?.slice(0, 400) ?? proc.stdout?.slice(0, 400) ?? "unknown"}`);
+  const pythonBins = process.platform === "win32" ? ["python", "py"] : ["python3", "python"];
+  let lastLocalError = "";
+  for (const bin of pythonBins) {
+    const proc = spawnSync(bin, [script, tmpPayload, input.pptxOut, input.pdfOut, input.pagesOut], {
+      encoding: "utf-8",
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        PYTHONPATH: [join(process.cwd(), "renderer"), process.env.PYTHONPATH]
+          .filter(Boolean)
+          .join(process.platform === "win32" ? ";" : ":"),
+      },
+    });
+    if (proc.status === 0) {
+      lastLocalError = "";
+      break;
+    }
+    const detail =
+      proc.error?.message ||
+      proc.stderr?.slice(0, 400) ||
+      proc.stdout?.slice(0, 400) ||
+      `exit=${proc.status ?? "null"}`;
+    lastLocalError = `${bin}: ${detail}`;
+  }
+  if (lastLocalError) {
+    throw new Error(
+      `golden-render-failed: remote=${httpFailure || "n/a"}; local=${lastLocalError}`
+    );
   }
   let mode: "libreoffice" | "fitz-fallback" | "unknown" = "unknown";
   try {
