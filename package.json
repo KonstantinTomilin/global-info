@@ -34,6 +34,7 @@
     "smoke:serp-observation-serper-slice": "tsx scripts/smoke-serp-observation-serper-slice.ts",
     "smoke:classic-provider-serp-wiring": "tsx scripts/smoke-classic-provider-serp-wiring.ts",
     "smoke:ceo-demo-report-quality": "tsx scripts/smoke-ceo-demo-report-quality.ts",
+    "smoke:ceo-first36-recovery-quality": "tsx scripts/smoke-ceo-first36-recovery-quality.ts",
     "smoke:serp-snapshot-report": "node scripts/smoke-serp-snapshot-report.mjs",
     "smoke:serp-snapshot-real-source": "tsx scripts/smoke-serp-snapshot-real-source.ts",
     "smoke:real-result-classifier": "tsx scripts/smoke-real-result-classifier.ts",

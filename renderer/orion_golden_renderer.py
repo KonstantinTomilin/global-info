@@ -117,12 +117,8 @@ class _Ctx:
         r = p.add_run()
         meta = self.slide_meta if isinstance(self.slide_meta, dict) else {}
         if self.ceo_mode:
-            data_mode = _safe(meta.get("dataMode") or "")
-            run_tail = _safe(str(meta.get("reportRunId") or ""))[:12]
-            extra = f" · {data_mode}" if data_mode else ""
-            if run_tail:
-                extra += f" · {run_tail}"
-            r.text = f"{self.page} / {self.total}{extra}"
+            date_label = _safe(meta.get("reportDateLabel") or "")
+            r.text = f"{date_label} · {self.page} / {self.total}" if date_label else f"{self.page} / {self.total}"
         else:
             r.text = f"{self.page} / {self.total}"
         r.font.name = FONT
@@ -268,6 +264,92 @@ def _embed_image(ctx: _Ctx, asset: dict[str, Any] | None, y: int, h: int = 48000
     ctx.body(f"{title}\n{domain}\nИзображение недоступно — показаны источник и описание.", y + 120000, max_h=h - 200000)
 
 
+def _ceo_metric_cards(ctx: _Ctx, bullets: list[str], y: int, cols: int = 2) -> int:
+    """Render KPI/dashboard rows as a card grid (CEO recovery — not bullet list)."""
+    items = [b for b in bullets if b.strip()]
+    if not items:
+        return y
+    gap = 140000
+    card_w = (ctx.content_w - gap * (cols - 1)) // cols
+    card_h = 1100000
+    for idx, text in enumerate(items[:8]):
+        row = idx // cols
+        col = idx % cols
+        cx = ctx.margin_x + col * (card_w + gap)
+        cy = y + row * (card_h + gap)
+        shape = ctx.slide.shapes.add_shape(1, Emu(cx), Emu(cy), Emu(card_w), Emu(card_h))
+        shape.fill.solid()
+        shape.fill.fore_color.rgb = CARD_BG
+        shape.line.color.rgb = CARD_BORDER
+        tf = shape.text_frame
+        tf.word_wrap = True
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        p = tf.paragraphs[0]
+        p.alignment = PP_ALIGN.CENTER
+        r = p.add_run()
+        r.text = _clip_words(text, 120)
+        r.font.name = FONT
+        r.font.size = Pt(11)
+        r.font.color.rgb = BODY_COLOR
+    rows_used = (min(len(items), 8) + cols - 1) // cols
+    return y + rows_used * (card_h + gap) + 80000
+
+
+def _ceo_matrix_table(ctx: _Ctx, bullets: list[str], y: int) -> int:
+    """Pipe-delimited matrix rows → monospace table layout."""
+    rows = [b for b in bullets if "|" in b]
+    if not rows:
+        ctx.bullets(bullets, y, max_items=10, max_chars=160)
+        return y + 2000000
+    avail = max(500000, ctx.content_bottom - y)
+    box = ctx.slide.shapes.add_textbox(Emu(ctx.margin_x), Emu(y), Emu(ctx.content_w), Emu(avail))
+    tf = box.text_frame
+    tf.word_wrap = False
+    first = True
+    for row in rows[:20]:
+        p = tf.paragraphs[0] if first else tf.add_paragraph()
+        first = False
+        p.space_before = Pt(1)
+        p.space_after = Pt(2)
+        p.line_spacing = 1.0
+        r = p.add_run()
+        clipped = _clip_words(row, 200)
+        r.text = clipped
+        r.font.name = "Courier New"
+        r.font.size = Pt(9)
+        if "Нежелательный" in clipped:
+            r.font.color.rgb = RGBColor(0xB9, 0x1C, 0x1C)
+        elif clipped.startswith("Запрос"):
+            r.font.bold = True
+            r.font.color.rgb = NAVY
+        else:
+            r.font.color.rgb = BODY_COLOR
+    return y + avail
+
+
+def _ceo_suggestion_list(ctx: _Ctx, bullets: list[str], y: int) -> int:
+    """Autocomplete / related queries as numbered chips."""
+    items = [b for b in bullets if b.strip()]
+    if not items:
+        return y
+    avail = max(400000, ctx.content_bottom - y)
+    box = ctx.slide.shapes.add_textbox(Emu(ctx.margin_x), Emu(y), Emu(ctx.content_w), Emu(avail))
+    tf = box.text_frame
+    tf.word_wrap = True
+    first = True
+    for idx, item in enumerate(items[:12], start=1):
+        p = tf.paragraphs[0] if first else tf.add_paragraph()
+        first = False
+        p.space_before = Pt(3)
+        p.space_after = Pt(6)
+        r = p.add_run()
+        r.text = f"{idx}. {_clip_words(item, 100)}"
+        r.font.name = FONT
+        r.font.size = Pt(12)
+        r.font.color.rgb = BODY_COLOR
+    return y + avail
+
+
 def _render_slide(ctx: _Ctx, slide: dict[str, Any], assets: dict[str, dict[str, Any]]) -> None:
     template = str(slide.get("template") or "")
     title = _safe(slide.get("title") or "ORION")[:70]
@@ -276,11 +358,31 @@ def _render_slide(ctx: _Ctx, slide: dict[str, Any], assets: dict[str, dict[str, 
     refs = slide.get("assetRefs") or []
     primary = assets.get(str(refs[0])) if refs else None
 
+    if template == "ceo_executive_dashboard":
+        ctx.light_bg()
+        y = ctx.title(title, 280000, NAVY, FS_SECTION)
+        y = _ceo_metric_cards(ctx, bullets, y, cols=2)
+        return
+
     if template == "ceo_kpi_cards":
         ctx.light_bg()
         y = ctx.title(title, 280000, NAVY, FS_SECTION)
-        ctx.card(y, h=ctx.content_bottom - y - 80000)
-        ctx.bullets(bullets[:5], y + 100000, max_items=5, max_chars=130)
+        y = _ceo_metric_cards(ctx, bullets, y, cols=2)
+        return
+
+    if template == "ceo_serp_matrix":
+        ctx.light_bg()
+        y = ctx.title(title, 280000, NAVY, FS_SECTION)
+        if narrative:
+            y = ctx.body(_clip_words(narrative, 200), y, max_h=400000, color=MUTED_COLOR)
+            y = y + 40000
+        _ceo_matrix_table(ctx, bullets, y)
+        return
+
+    if template == "ceo_autocomplete":
+        ctx.light_bg()
+        y = ctx.title(title, 280000, NAVY, FS_SECTION)
+        _ceo_suggestion_list(ctx, bullets, y)
         return
 
     if template == "ceo_status_table":
@@ -304,13 +406,10 @@ def _render_slide(ctx: _Ctx, slide: dict[str, Any], assets: dict[str, dict[str, 
         "ceo_cover": "orion_golden_cover",
         "ceo_toc": "orion_golden_toc",
         "ceo_executive": "orion_golden_executive_card",
-        "ceo_executive_dashboard": "orion_golden_audit_dashboard",
         "ceo_region_divider": "orion_golden_region_divider",
         "ceo_serp_evidence": "orion_golden_serp_screenshot",
         "ceo_media_grid": "orion_golden_image_grid",
         "ceo_knowledge_panel": "orion_golden_lexis_visual_page",
-        "ceo_serp_matrix": "orion_golden_search_table",
-        "ceo_autocomplete": "orion_golden_search_table",
     }
     if template in ceo_aliases:
         template = ceo_aliases[template]

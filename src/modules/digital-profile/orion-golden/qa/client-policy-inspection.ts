@@ -8,6 +8,7 @@ import {
   ORION_GOLDEN_FORBIDDEN_RAW_TOKENS,
   scanOrionGoldenClientTextForForbiddenTokens,
 } from "../client/client-text-sanitizer";
+import { scanCeoClientTextLeaks } from "../classic/ceo-client-labels";
 import type { OrionGoldenReportSpec } from "../report-spec/orion-report-spec";
 
 const EXTRA_FORBIDDEN = [
@@ -86,6 +87,15 @@ export function inspectOrionGoldenClientPolicy(input: {
     issues.add("forbidden:raw-case-id");
   }
 
+  const ceoDemo =
+    Boolean((input.reportSpec.qaMetadata as { ceoDemoMode?: boolean } | undefined)?.ceoDemoMode) ||
+    (input.deckManifest.finalSlides ?? []).some((s) => String(s.template).startsWith("ceo_"));
+  if (ceoDemo) {
+    for (const leak of scanCeoClientTextLeaks(parts)) {
+      issues.add(leak);
+    }
+  }
+
   return { passed: issues.size === 0, issues: [...issues] };
 }
-
+

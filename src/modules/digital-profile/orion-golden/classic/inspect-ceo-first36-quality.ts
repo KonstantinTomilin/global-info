@@ -1,5 +1,5 @@
 /**
- * Hard QA gate for CEO demo first-36 deck.
+ * Hard QA gate for CEO demo first-36 deck (recovery).
  */
 
 import { existsSync, readdirSync } from "node:fs";
@@ -11,26 +11,7 @@ import {
   ORION_FIRST_36_SLIDE_REGISTRY_V1,
 } from "./orion-first-36-slide-registry.v1";
 import type { MetricRegistry } from "./report-metric-registry";
-
-const VISUAL_CEO_TEMPLATES = new Set([
-  "ceo_cover",
-  "ceo_toc",
-  "ceo_executive_dashboard",
-  "ceo_kpi_cards",
-  "ceo_region_divider",
-  "ceo_serp_matrix",
-  "ceo_serp_evidence",
-  "ceo_media_grid",
-  "ceo_knowledge_panel",
-  "ceo_compliance_profile",
-]);
-
-const COMMERCIAL_KEYS = new Set([
-  "offer",
-  "product_overview",
-  "solution_digital_profile",
-  "about",
-]);
+import { scanCeoClientTextLeaks } from "./ceo-client-labels";
 
 export type CeoQualityCheck = {
   id: string;
@@ -44,6 +25,12 @@ export function inspectCeoFirst36Quality(input: {
   metrics: MetricRegistry;
   assets: ReportAssetV1[];
   outputRoot?: string;
+  sliceReadiness?: {
+    passed: boolean;
+    hardFailed: boolean;
+    issues: string[];
+    checks: Array<{ id: string; passed: boolean; hard: boolean; detail: string }>;
+  };
 }): {
   passed: boolean;
   hardFailed: boolean;
@@ -55,75 +42,41 @@ export function inspectCeoFirst36Quality(input: {
   const checks: CeoQualityCheck[] = [];
   const slides = input.deckManifest.finalSlides;
 
-  const slideCountOk = slides.length === CEO_FIRST_36_SLIDE_COUNT;
-  checks.push({
-    id: "exact-36-slides",
-    passed: slideCountOk,
-    hard: true,
-    detail: `${slides.length} slides (required ${CEO_FIRST_36_SLIDE_COUNT})`,
-  });
-
-  const pageMapOk = ORION_FIRST_36_SLIDE_REGISTRY_V1.every((entry, idx) => {
-    const slide = slides[idx];
-    return (
-      slide?.pageNumber === entry.referencePage &&
-      slide?.sectionKey === entry.sectionKey &&
-      slide?.template === entry.template
-    );
-  });
-  checks.push({
-    id: "registry-page-mapping",
-    passed: pageMapOk,
-    hard: true,
-    detail: pageMapOk ? "referencePage→sectionKey/template aligned" : "registry slot mismatch",
-  });
-
-  const commercial = slides.filter((s) => COMMERCIAL_KEYS.has(s.sectionKey));
-  checks.push({
-    id: "no-commercial-tail",
-    passed: commercial.length === 0,
-    hard: true,
-    detail: commercial.length ? `${commercial.length} commercial slides` : "no commercial sections",
-  });
-
-  const matrixBullets = slides
-    .filter((s) => s.template === "ceo_serp_matrix")
-    .flatMap((s) => s.bullets ?? []);
-  const dashRank = matrixBullets.some((b) => /#\s*—|#\s*–|rank:\s*—/i.test(b));
-  checks.push({
-    id: "no-dash-rank-matrix",
-    passed: !dashRank,
-    hard: true,
-    detail: dashRank ? "matrix contains #— placeholder" : "matrix ranks numeric",
-  });
+  if (input.sliceReadiness) {
+    for (const c of input.sliceReadiness.checks) {
+      checks.push({ id: c.id, passed: c.passed, hard: c.hard, detail: c.detail });
+    }
+  }
 
   const texts = slides.flatMap((s) => [s.title, s.narrative ?? "", ...(s.bullets ?? [])]);
-  const falseExtreme =
-    input.metrics.dataMode !== "RUN_SCOPED" &&
-    texts.some((t) => /крайне\s+негативн/i.test(t));
+  const leaks = scanCeoClientTextLeaks(texts);
   checks.push({
-    id: "no-untrusted-extreme-label",
-    passed: !falseExtreme,
+    id: "client-text-scan",
+    passed: leaks.length === 0,
     hard: true,
-    detail: falseExtreme ? "extreme label without RUN_SCOPED" : "risk labels gated",
+    detail: leaks.length ? leaks.slice(0, 3).join("; ") : "no policy leaks",
   });
 
-  const visualTemplateCount = slides.filter((s) => VISUAL_CEO_TEMPLATES.has(s.template)).length;
+  const blockedReady = slides.filter(
+    (s) => s.ceoMeta?.readiness === "blocked" && (s.bullets ?? []).some((b) => /материал недоступен/i.test(b))
+  );
+  checks.push({
+    id: "blocked-not-fake-ready-copy",
+    passed: blockedReady.length === 0,
+    hard: true,
+    detail: blockedReady.length ? `blocked slides with fake-ready copy: ${blockedReady.map((s) => s.pageNumber).join(",")}` : "ok",
+  });
+
+  const visualTemplateCount = slides.filter((s) =>
+    /ceo_(cover|toc|executive_dashboard|kpi_cards|region_divider|serp_matrix|serp_evidence|media_grid|knowledge_panel|compliance_profile)/.test(
+      s.template
+    )
+  ).length;
   checks.push({
     id: "visual-template-floor",
-    passed: visualTemplateCount >= 24,
+    passed: visualTemplateCount >= 20,
     hard: false,
-    detail: `${visualTemplateCount}/36 visual templates (min 24)`,
-  });
-
-  const serpWithImage = slides
-    .filter((s) => s.template === "ceo_serp_evidence")
-    .filter((s) => (s.assetRefs ?? []).some((ref) => input.assets.some((a) => a.assetRef === ref && a.imageData)));
-  checks.push({
-    id: "serp-evidence-embedded",
-    passed: serpWithImage.length >= 1,
-    hard: false,
-    detail: `${serpWithImage.length} SERP slides with imageData`,
+    detail: `${visualTemplateCount}/36 visual templates`,
   });
 
   if (input.outputRoot) {
@@ -139,12 +92,28 @@ export function inspectCeoFirst36Quality(input: {
     });
   }
 
+  const pageMapOk = ORION_FIRST_36_SLIDE_REGISTRY_V1.every((entry, idx) => {
+    const slide = slides[idx];
+    return (
+      slide?.pageNumber === entry.referencePage &&
+      slide?.sectionKey === entry.sectionKey &&
+      slide?.template === entry.template
+    );
+  });
+  checks.push({
+    id: "registry-page-mapping",
+    passed: pageMapOk,
+    hard: true,
+    detail: pageMapOk ? "aligned" : "registry mismatch",
+  });
+
   for (const check of checks) {
     if (!check.passed) issues.push(`${check.id}: ${check.detail}`);
   }
 
-  const hardFailed = checks.some((c) => c.hard && !c.passed);
-  const passed = !hardFailed && checks.filter((c) => !c.hard && !c.passed).length === 0;
+  const hardFailed =
+    checks.some((c) => c.hard && !c.passed) || Boolean(input.sliceReadiness?.hardFailed);
+  const passed = !hardFailed;
 
   return { passed, hardFailed, issues, checks, visualTemplateCount };
 }

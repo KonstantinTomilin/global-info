@@ -22,6 +22,8 @@ export type OrionGoldenDeckSlide = {
     region?: string;
     dataMode?: string;
     reportRunId?: string;
+    reportDateLabel?: string;
+    readiness?: "ready" | "blocked";
   };
 };
 

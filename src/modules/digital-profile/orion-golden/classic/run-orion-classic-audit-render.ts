@@ -24,8 +24,11 @@ import { evaluateClassicProviderSerpGate } from "./orion-classic-provider-serp-a
 import { isCeoDemoMode } from "./ceo-demo-mode";
 import { buildReportEvidenceSnapshot } from "./report-evidence-snapshot";
 import { buildMetricRegistry } from "./report-metric-registry";
-import { composeOrionCeoFirst36Deck } from "./compose-orion-ceo-first36-deck";
+import { composeOrionCeoFirst36Deck, buildExecutiveNarrative } from "./compose-orion-ceo-first36-deck";
 import { materializeReportAssetImages } from "./materialize-report-assets";
+import { filterCeoReportAssets } from "./ceo-entity-filter";
+import { evaluateCeoSliceReadiness } from "./ceo-slice-readiness";
+import { scanCeoClientTextLeaks } from "./ceo-client-labels";
 import { inspectCeoFirst36Quality } from "./inspect-ceo-first36-quality";
 import { CEO_FIRST_36_SLIDE_COUNT } from "./orion-first-36-slide-registry.v1";
 import type { OrionGoldenReportSpec } from "../report-spec/orion-report-spec";
@@ -273,7 +276,8 @@ async function runOrionCeoDemoRender(options: {
     ctx.databaseProfiles.map((p) => ({
       provider: p.provider,
       status: p.reviewStatus ?? p.matchType,
-    }))
+    })),
+    clientContent.subject.displayName
   );
 
   writeJson(join(outputRoot, "report-evidence-snapshot.json"), snapshot);
@@ -285,7 +289,8 @@ async function runOrionCeoDemoRender(options: {
     audience: "internal_preview",
     allowSyntheticSerp: true,
   });
-  const assets = await materializeReportAssetImages({ caseId, assets: rawAssets });
+  const materialized = await materializeReportAssetImages({ caseId, assets: rawAssets });
+  const assets = filterCeoReportAssets(clientContent.subject.displayName, materialized);
   writeJson(join(outputRoot, "report-assets.json"), assets);
 
   const deckManifest = composeOrionCeoFirst36Deck({
@@ -305,9 +310,23 @@ async function runOrionCeoDemoRender(options: {
     },
     executiveSummary: {
       globalRiskLevel: "moderate" as const,
-      headline: `CEO Demo — ${clientContent.subject.displayName}`,
-      narrative: metrics.caveats.join(" "),
-      executiveSummary: metrics.caveats.join(" ") || "CEO Demo first-36",
+      headline: `Предварительный аудит — ${clientContent.subject.displayName}`,
+      narrative: buildExecutiveNarrative({
+        subjectName: clientContent.subject.displayName,
+        reportRunId,
+        snapshot,
+        metrics,
+        assets,
+        reportDateLabel: formatReportDateLabel(clientContent.generatedAt),
+      }),
+      executiveSummary: buildExecutiveNarrative({
+        subjectName: clientContent.subject.displayName,
+        reportRunId,
+        snapshot,
+        metrics,
+        assets,
+        reportDateLabel: formatReportDateLabel(clientContent.generatedAt),
+      }),
       mainRisks: [],
       finalRecommendations: [],
       nextSteps: [],
@@ -346,31 +365,52 @@ async function runOrionCeoDemoRender(options: {
   });
   writeJson(join(outputRoot, "visual-qa-inspection.json"), visual);
 
+  const sliceReadiness = evaluateCeoSliceReadiness({
+    deckManifest,
+    metrics,
+    assets,
+    subjectName: clientContent.subject.displayName,
+  });
+  writeJson(join(outputRoot, "ceo-slice-readiness.json"), sliceReadiness);
+
   const ceoQa = inspectCeoFirst36Quality({
     deckManifest,
     metrics,
     assets,
     outputRoot,
+    sliceReadiness,
   });
   writeJson(join(outputRoot, "ceo-first36-quality-inspection.json"), ceoQa);
 
   const clientPolicy = inspectOrionGoldenClientPolicy({ reportSpec, deckManifest });
   writeJson(join(outputRoot, "client-policy-inspection.json"), clientPolicy);
 
+  const textLeaks = scanCeoClientTextLeaks(
+    deckManifest.finalSlides.flatMap((s) => [s.title, s.narrative ?? "", ...(s.bullets ?? [])])
+  );
+
   const verdict =
-    ceoQa.passed && visual.passed && deckManifest.slideCount === CEO_FIRST_36_SLIDE_COUNT
+    sliceReadiness.passed &&
+    !sliceReadiness.hardFailed &&
+    clientPolicy.passed &&
+    textLeaks.length === 0 &&
+    visual.passed &&
+    deckManifest.slideCount === CEO_FIRST_36_SLIDE_COUNT
       ? "PASS"
       : "FAIL";
 
   const qualityGateStatus: "completed" | "failed_quality_gate" | "completed_internal_preview_with_warnings" =
-    ceoQa.hardFailed
+    sliceReadiness.hardFailed || textLeaks.length > 0 || !clientPolicy.passed
       ? "failed_quality_gate"
       : verdict === "PASS"
         ? "completed"
         : "completed_internal_preview_with_warnings";
 
   const warnings = [
+    ...sliceReadiness.issues,
     ...ceoQa.issues,
+    ...textLeaks,
+    ...(clientPolicy.issues ?? []),
     ...visual.checks.filter((c) => !c.passed).map((c) => `${c.id}: ${c.detail}`),
     ...(renderResult.warnings ?? []),
   ];
@@ -383,7 +423,7 @@ async function runOrionCeoDemoRender(options: {
     verdict,
     clientPolicyStatus: clientPolicy.passed ? "PASS" : "FAIL",
     visualPassed: visual.passed,
-    classicQaPassed: ceoQa.passed,
+    classicQaPassed: sliceReadiness.passed && ceoQa.passed,
     warnings,
     qualityGateStatus,
     ceoDemoMode: true,

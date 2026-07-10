@@ -3,6 +3,7 @@
  */
 
 import type { ReportEvidenceSnapshot, SnapshotObservation } from "./report-evidence-snapshot";
+import { filterSubjectRelevantObservation } from "./ceo-entity-filter";
 
 export type RegionMetrics = {
   region: "RU" | "UAE";
@@ -130,11 +131,24 @@ function complianceStatus(
 
 export function buildMetricRegistry(
   snapshot: ReportEvidenceSnapshot,
-  databaseProfiles: Array<{ provider?: string; status?: string }> = []
+  databaseProfiles: Array<{ provider?: string; status?: string }> = [],
+  subjectName?: string
 ): MetricRegistry {
-  const ru = buildRegionMetrics(snapshot, "RU");
-  const uae = buildRegionMetrics(snapshot, "UAE");
-  const caveats: string[] = [...snapshot.warnings];
+  const filteredSnapshot =
+    subjectName && snapshot.observations.length > 0
+      ? {
+          ...snapshot,
+          observations: snapshot.observations.filter((o) =>
+            filterSubjectRelevantObservation(subjectName, o)
+          ),
+        }
+      : snapshot;
+
+  const ru = buildRegionMetrics(filteredSnapshot, "RU");
+  const uae = buildRegionMetrics(filteredSnapshot, "UAE");
+  const caveats: string[] = [...snapshot.warnings].filter(
+    (w) => !/RUN_SCOPED|LEGACY_CASE_SCOPE|reportRunId/i.test(w)
+  );
 
   if (snapshot.dataMode !== "RUN_SCOPED") {
     caveats.push("Предварительная выборка; доля не рассчитывается");
@@ -142,9 +156,10 @@ export function buildMetricRegistry(
     caveats.push(`Покрытие выборки ${snapshot.coverage.pct ?? 0}% — доли ориентировочные`);
   }
 
-  const totalOrganic =
-    snapshot.observations.filter((o) => o.surface === "organic" && o.rank > 0).length;
-  const totalAdverse = snapshot.observations.filter(
+  const totalOrganic = filteredSnapshot.observations.filter(
+    (o) => o.surface === "organic" && o.rank > 0
+  ).length;
+  const totalAdverse = filteredSnapshot.observations.filter(
     (o) => o.surface === "organic" && o.rank > 0 && isAdverse(o)
   ).length;
 
