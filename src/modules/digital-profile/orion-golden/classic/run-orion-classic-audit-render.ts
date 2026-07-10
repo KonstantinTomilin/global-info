@@ -299,11 +299,18 @@ async function runOrionCeoDemoRender(options: {
   writeJson(join(outputRoot, "final-deck-manifest.json"), deckManifest);
 
   const reportSpec = {
-    subject: { displayName: clientContent.subject.displayName },
+    subject: {
+      displayName: clientContent.subject.displayName,
+      reportTitle: "ORION Digital Profile — CEO Demo",
+    },
     executiveSummary: {
       globalRiskLevel: "moderate" as const,
       headline: `CEO Demo — ${clientContent.subject.displayName}`,
       narrative: metrics.caveats.join(" "),
+      executiveSummary: metrics.caveats.join(" ") || "CEO Demo first-36",
+      mainRisks: [],
+      finalRecommendations: [],
+      nextSteps: [],
     },
     qaMetadata: {
       ceoDemoMode: true,
