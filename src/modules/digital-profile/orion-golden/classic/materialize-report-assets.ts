@@ -1,8 +1,10 @@
 /**
  * Materialize remote image URLs into imageData before Python renderer (no URL fetch in renderer).
+ * Always normalizes to PNG — python-pptx rejects WEBP.
  */
 
 import { createHash } from "node:crypto";
+import sharp from "sharp";
 import type { ReportAssetV1 } from "../../orion-report-spec/asset-builder";
 import { loadFile, saveFile, sha256 as hashBuf } from "../../storage/private-store";
 import { buildStorageKey } from "../../storage/keys";
@@ -25,12 +27,21 @@ async function fetchImageBytes(url: string): Promise<Buffer | null> {
   try {
     const res = await fetch(url, {
       signal: AbortSignal.timeout(15_000),
-      headers: { Accept: "image/*" },
+      headers: { Accept: "image/*,image/webp" },
     });
     if (!res.ok) return null;
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.length < 200 || buf.length > 8 * 1024 * 1024) return null;
     return buf;
+  } catch {
+    return null;
+  }
+}
+
+/** Convert any raster (incl. WEBP) to PNG for python-pptx compatibility. */
+export async function normalizeImageToPng(bytes: Buffer): Promise<Buffer | null> {
+  try {
+    return await sharp(bytes).rotate().png().toBuffer();
   } catch {
     return null;
   }
@@ -43,32 +54,41 @@ export async function materializeReportAssetImages(input: {
   const out: ReportAssetV1[] = [];
 
   for (const asset of input.assets) {
+    let bytes: Buffer | null = null;
+
     if (asset.imageData) {
-      out.push(asset);
-      continue;
-    }
-    if (!asset.imageUrl || asset.status !== "ready") {
+      bytes = Buffer.from(asset.imageData, "base64");
+    } else if (asset.imageUrl && asset.status === "ready") {
+      bytes = await fetchImageBytes(asset.imageUrl);
+      if (!bytes) {
+        out.push({
+          ...asset,
+          status: "missing",
+          failureReason: "image_url_fetch_failed",
+        });
+        continue;
+      }
+    } else {
       out.push(asset);
       continue;
     }
 
-    const bytes = await fetchImageBytes(asset.imageUrl);
-    if (!bytes) {
+    const png = await normalizeImageToPng(bytes);
+    if (!png) {
       out.push({
         ...asset,
+        imageData: undefined,
         status: "missing",
-        failureReason: "image_url_fetch_failed",
+        failureReason: "image_format_unsupported",
       });
       continue;
     }
 
-    const digest = hashBuf(bytes);
-    const ext = asset.mimeType?.includes("jpeg") ? "jpg" : "png";
-    const key = buildStorageKey.imageThumbnail(input.caseId, digest.slice(0, 16), ext);
+    const digest = hashBuf(png);
+    const key = buildStorageKey.imageThumbnail(input.caseId, digest.slice(0, 16), "png");
     try {
-      await saveFile(key, bytes);
+      await saveFile(key, png);
     } catch {
-      // storage may already have file
       try {
         await loadFile(key);
       } catch {
@@ -79,9 +99,9 @@ export async function materializeReportAssetImages(input: {
 
     out.push({
       ...asset,
-      imageData: bytes.toString("base64"),
+      imageData: png.toString("base64"),
       sha256: digest,
-      mimeType: asset.mimeType ?? "image/png",
+      mimeType: "image/png",
       status: "ready",
     });
   }

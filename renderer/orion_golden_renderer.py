@@ -215,21 +215,52 @@ def _asset_map(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {str(a.get("assetRef")): a for a in payload.get("assets") or []}
 
 
+def _image_bytes_as_pptx_png(raw: bytes, asset_ref: object) -> Path | None:
+    """Write image bytes to a temp PNG path python-pptx can embed (WEBP → PNG via PIL)."""
+    safe_ref = re.sub(r"[^\w.-]+", "_", str(asset_ref or "img"))[:80]
+    out_path = Path(tempfile.gettempdir()) / f"orion-golden-{safe_ref}.png"
+    if Image is not None:
+        try:
+            with Image.open(io.BytesIO(raw)) as im:
+                # WEBP/GIF/etc → RGB PNG for python-pptx
+                if im.mode in ("RGBA", "LA", "P"):
+                    im = im.convert("RGBA")
+                else:
+                    im = im.convert("RGB")
+                im.save(out_path, format="PNG")
+                return out_path
+        except Exception:  # noqa: BLE001
+            pass
+    # Fallback: assume already PNG/JPEG-compatible bytes
+    try:
+        out_path.write_bytes(raw)
+        return out_path
+    except OSError:
+        return None
+
+
 def _embed_image(ctx: _Ctx, asset: dict[str, Any] | None, y: int, h: int = 4800000) -> None:
     if not asset:
         ctx.body("Визуальный материал недоступен для данного раздела.", y)
         return
     img_data = asset.get("imageData")
     if img_data:
-        img_path = Path(tempfile.gettempdir()) / f"orion-golden-{asset.get('assetRef')}.png"
-        img_path.write_bytes(base64.b64decode(str(img_data)))
-        ctx.slide.shapes.add_picture(
-            str(img_path), Emu(ctx.margin_x), Emu(y), width=Emu(ctx.content_w), height=Emu(h)
-        )
-        try:
-            img_path.unlink(missing_ok=True)
-        except OSError:
-            pass
+        raw = base64.b64decode(str(img_data))
+        img_path = _image_bytes_as_pptx_png(raw, asset.get("assetRef"))
+        if img_path is not None:
+            try:
+                ctx.slide.shapes.add_picture(
+                    str(img_path), Emu(ctx.margin_x), Emu(y), width=Emu(ctx.content_w), height=Emu(h)
+                )
+                return
+            except Exception:  # noqa: BLE001
+                pass
+            finally:
+                try:
+                    img_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+        ctx.body("Изображение недоступно (неподдерживаемый формат).", y)
         return
     title = _safe(asset.get("title") or "Источник")
     domain = _safe(asset.get("caption") or "")
@@ -365,13 +396,32 @@ def _render_slide(ctx: _Ctx, slide: dict[str, Any], assets: dict[str, dict[str, 
             cy = y + row * (cell_h + gap)
             asset = assets.get(str(ref))
             if asset and asset.get("imageData"):
-                img_path = Path(tempfile.gettempdir()) / f"orion-golden-grid-{ref}.png"
-                img_path.write_bytes(base64.b64decode(str(asset.get("imageData"))))
-                ctx.slide.shapes.add_picture(str(img_path), Emu(cx), Emu(cy), width=Emu(cell_w), height=Emu(cell_h))
-                try:
-                    img_path.unlink(missing_ok=True)
-                except OSError:
-                    pass
+                img_path = _image_bytes_as_pptx_png(
+                    base64.b64decode(str(asset.get("imageData"))), f"grid-{ref}"
+                )
+                if img_path is not None:
+                    try:
+                        ctx.slide.shapes.add_picture(
+                            str(img_path), Emu(cx), Emu(cy), width=Emu(cell_w), height=Emu(cell_h)
+                        )
+                        continue
+                    except Exception:  # noqa: BLE001
+                        pass
+                    finally:
+                        try:
+                            img_path.unlink(missing_ok=True)
+                        except OSError:
+                            pass
+                shape = ctx.slide.shapes.add_shape(1, Emu(cx), Emu(cy), Emu(cell_w), Emu(cell_h))
+                shape.fill.solid()
+                shape.fill.fore_color.rgb = CARD_BG
+                shape.line.color.rgb = CARD_BORDER
+                tf = shape.text_frame
+                tf.word_wrap = True
+                p = tf.paragraphs[0]
+                r = p.add_run()
+                r.text = "Недоступно"
+                r.font.size = Pt(FS_CAPTION)
             else:
                 shape = ctx.slide.shapes.add_shape(1, Emu(cx), Emu(cy), Emu(cell_w), Emu(cell_h))
                 shape.fill.solid()
