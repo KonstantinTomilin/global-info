@@ -24,13 +24,11 @@ import type {
 import {
   RISK_ORDER,
   VISUAL_ASSET_UNAVAILABLE,
-  bulletWithFindingId,
   changeSinceLastReportLine,
   chunk,
   claimBodyWithoutTheme,
   clampClientText,
   fitClientSentences,
-  fitStructuredBullet,
   isAdverse,
   makeSlotSlide,
   matchGptKeyRisk,
@@ -42,6 +40,7 @@ import {
   uniqueRefs,
   verdictClientLabel,
 } from "./shared";
+import { bulletWithFindingIdAtomic } from "../semantic-summary-pagination";
 
 /**
  * §7.2 — compact freshness + change line for surfaces that render narrative/bullets
@@ -392,7 +391,8 @@ export function buildExecutiveSummaryFragment(
       .join("\n");
     const lines = [`«${k.title}»`, core];
     if (risk?.advice) lines.push(`Что делать: ${risk.advice}`);
-    return bulletWithFindingId(lines.filter(Boolean).join("\n"), k.findingId, 900);
+    // C7 — keep theme block whole; pagination moves overflow slides.
+    return bulletWithFindingIdAtomic(lines.filter(Boolean).join("\n"), k.findingId);
   });
   const bullets = es.keyFindings.map((k) => {
     const finding = scoped.findings.find((f) => f.findingId === k.findingId);
@@ -413,7 +413,7 @@ export function buildExecutiveSummaryFragment(
     const risk = matchGptKeyRisk(k.title, gpt?.keyRisks);
     const lines = [`«${k.title}»`, concrete];
     if (risk?.advice) lines.push(`Что делать: ${risk.advice}`);
-    return bulletWithFindingId(lines.filter(Boolean).join("\n"), k.findingId, 900);
+    return bulletWithFindingIdAtomic(lines.filter(Boolean).join("\n"), k.findingId);
   });
   // Sparse but complete collection: keep a client-safe page that states
   // there are no confirmed findings — never invent risks. Still show
@@ -566,27 +566,21 @@ export const RISK_MATRIX_LIKELY_AGGREGATE_ID = "finding-likely-aggregate";
 
 function riskMatrixDetail(f: Finding, extras?: FragmentExtras): string {
   // PDF-40 G.1b / PDF-46 I.4 — headline shows theme; keep structured lines whole.
-  // C6 — matrix uses brief disclosure, never the full ORION paragraph.
+  // C6 — matrix uses brief disclosure; C7 — no mid-cut fitStructuredBullet.
   const claim = claimBodyWithoutTheme(f, {
     disclosureText: resolveDisclosureClaimText(f, "RISK_MATRIX", extras),
   });
   if (f.subjectMatch === "LIKELY_SUBJECT") {
-    return fitStructuredBullet(
-      [
-        claim,
-        "Принадлежность пока не подтверждена — до уточнения идентификации материал не включаем в итог «об этом лице».",
-      ].join("\n"),
-      900
-    );
+    return [
+      claim,
+      "Принадлежность пока не подтверждена — до уточнения идентификации материал не включаем в итог «об этом лице».",
+    ].join("\n");
   }
   const risk = matchGptKeyRisk(f.theme, extras?.gptCaseAnalysis?.keyRisks);
   if (risk) {
-    return fitStructuredBullet(
-      [claim, risk.explanation, `Что делать: ${risk.advice}`].join("\n"),
-      900
-    );
+    return [claim, risk.explanation, `Что делать: ${risk.advice}`].join("\n");
   }
-  return fitStructuredBullet([claim, `Что делать: ${f.recommendedAction}`].join("\n"), 900);
+  return [claim, `Что делать: ${f.recommendedAction}`].join("\n");
 }
 
 function riskMatrixRow(f: Finding): string[] {

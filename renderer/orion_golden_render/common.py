@@ -1027,15 +1027,14 @@ class _Ctx:
             )
             return int(raw_h * measure_slack) + 60_000
 
-        while kept and _bullet_block_height(kept) > page_avail:
-            if len(kept) == 1:
-                # Drop whole structural lines from the sole bullet until it fits.
-                parts = _split_structured_bullet(kept[0]) or [kept[0]]
-                while len(parts) > 1 and _bullet_block_height(["\n".join(parts)]) > page_avail:
-                    parts.pop()
-                kept = ["\n".join(parts)] if parts and _bullet_block_height(["\n".join(parts)]) <= page_avail else []
-                break
-            kept.pop()
+        # C7 — theme blocks are atomic. Overflow must be fixed by TS
+        # continuation pagination, never by silently dropping bullets/lines.
+        if kept and _bullet_block_height(kept) > page_avail:
+            raise RuntimeError(
+                f"ORION bullet overflow on p{self.page}: "
+                f"{len(kept)} theme block(s) need { _bullet_block_height(kept) } "
+                f"EMU but only {page_avail} available; paginate to continuation"
+            )
         if not kept:
             return y
         text_lines: list[str] = []

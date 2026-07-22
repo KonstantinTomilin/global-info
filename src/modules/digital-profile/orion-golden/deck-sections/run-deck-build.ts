@@ -23,6 +23,10 @@ import {
   assertCrossSlideDedupeGatesPass,
   buildCrossSlideDedupeReport,
 } from "./cross-slide-dedupe-qa";
+import {
+  assertSemanticPaginationGatesPass,
+  countClientTextTruncations,
+} from "./semantic-summary-pagination";
 
 export type DeckBuildResult = {
   packs: SectionPackV2[];
@@ -117,6 +121,36 @@ export function runDeckBuild(input: {
     writeFileSync(dedupePath, JSON.stringify(dedupeReport, null, 2), "utf8");
     artifacts["cross-slide-dedupe-report.json"] = dedupePath;
     assertCrossSlideDedupeGatesPass(dedupeReport);
+  }
+
+  // C7 — no mid-clip / dangling truncations on theme-bearing summary packs.
+  const THEME_FRAGMENTS = new Set([
+    "EXECUTIVE_SUMMARY",
+    "RISK_MATRIX",
+    "RU_SUMMARY",
+    "UAE_SUMMARY",
+  ]);
+  const themePacks = packs.filter((p) => THEME_FRAGMENTS.has(p.fragmentKey));
+  const packTexts = themePacks.flatMap((p) =>
+    p.slides.flatMap((s) => [s.content.narrative ?? "", ...(s.content.bullets ?? [])])
+  );
+  const trunc = countClientTextTruncations(packTexts);
+  const paginationReport = {
+    CLIENT_TEXT_TRUNCATIONS: trunc.count,
+    themeBlocksPaginated: packTexts.length,
+    continuationSlides: packs.reduce(
+      (n, p) => n + p.slides.filter((s) => s.isContinuation).length,
+      0
+    ),
+    samples: trunc.samples,
+    CONTINUATION_ADJACENCY: true, // enforced later by validateAssembly
+  };
+  const paginationPath = join(input.outputRoot, "semantic-pagination-report.json");
+  writeFileSync(paginationPath, JSON.stringify(paginationReport, null, 2), "utf8");
+  artifacts["semantic-pagination-report.json"] = paginationPath;
+  // Fail-closed when C6 disclosure plan is present (new content path).
+  if (disclosurePlan) {
+    assertSemanticPaginationGatesPass(paginationReport);
   }
 
   // 3. Persist every SectionPack independently.

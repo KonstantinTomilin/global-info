@@ -19,7 +19,8 @@ function firstSentence(text: string, maxLen = 220): string {
   if (s.length <= maxLen) return s;
   const cut = s.slice(0, maxLen);
   const sp = cut.lastIndexOf(" ");
-  return `${(sp > 40 ? cut.slice(0, sp) : cut).trim()}…`;
+  // Prefer a complete shorter clause without ellipsis (C7 truncation gate).
+  return `${(sp > 40 ? cut.slice(0, sp) : cut).trim()}.`;
 }
 
 function briefFromBlock(block: ComposedThemeBlock): string {

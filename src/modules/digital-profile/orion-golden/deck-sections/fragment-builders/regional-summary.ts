@@ -10,7 +10,10 @@ import { slotsForFragment } from "../canonical-slots";
 import { pluralRu } from "../../analytics/finding-synthesizer";
 import type { FragmentBuildOutput, FragmentExtras, UncategorizedMaterialsExtras } from "./shared";
 import {
-  bulletWithFindingId,
+  bulletWithFindingIdAtomic,
+  paginateThemeBlocks,
+} from "../semantic-summary-pagination";
+import {
   claimText,
   clampClientText,
   coverageContent,
@@ -24,7 +27,6 @@ import {
   splitClientParagraphs,
   statusLine,
   uniqueRefs,
-  withContinuations,
 } from "./shared";
 
 function uncategorizedBulletForRegion(
@@ -167,10 +169,9 @@ export function buildRegionalSummaryFragment(
       ...scoped.findings
         .slice(0, 8)
         .map((f) =>
-          bulletWithFindingId(
+          bulletWithFindingIdAtomic(
             localizedThemedClaim(f, scoped, extras, key),
-            f.findingId,
-            900
+            f.findingId
           )
         ),
       ...(uncategorized ? [uncategorized.bullet] : []),
@@ -231,7 +232,8 @@ export function buildRegionalSummaryFragment(
         uncategorized: uncategorized?.count ?? 0,
       },
     });
-    slides.push(...withContinuations(base, "regional-summary"));
+    // C7 — theme-atomic pagination (whole bullet moves; never mid-cut).
+    slides.push(...paginateThemeBlocks({ base, templateId: "regional-summary" }).slides);
   }
 
   // Metrics slot: full per-surface coverage breakdown (what was collected on
