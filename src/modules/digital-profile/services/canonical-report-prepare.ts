@@ -77,6 +77,7 @@ import {
   buildReportDiffArtifact,
   computeMaterialFreshness,
 } from "./report-material-freshness";
+import { evaluateGptFallbackPolicy } from "../orion-golden/gpt/gpt-fallback-policy";
 
 export type CanonicalPrepareBlockerCode =
   | "CANONICAL_PREPARE_DISABLED"
@@ -88,7 +89,9 @@ export type CanonicalPrepareBlockerCode =
   | "REQUIRED_SECTION_FAILED"
   | "RENDER_FAILED"
   | "GPT_COPY_RESUME_INPUTS_MISSING"
-  | "GPT_COPY_CALLER_UNAVAILABLE";
+  | "GPT_COPY_CALLER_UNAVAILABLE"
+  /** C0: production forbids silent deterministic GPT fallback. */
+  | "GPT_LAYER_FALLBACK_FORBIDDEN";
 
 export class CanonicalPrepareBlockedError extends Error {
   code: CanonicalPrepareBlockerCode;
@@ -115,7 +118,8 @@ export type CanonicalPrepareInput = {
    * GPT report layer: full-corpus case analysis + per-slide client copy.
    * `undefined` → auto (live OpenAI when the AI analyst is configured and
    * NETWORK_CALLS!=0); explicit `null` → disabled; injected caller → offline
-   * tests. Fail-safe: any GPT failure keeps the deterministic report.
+   * tests. When `orionV2AllowDeterministicFallback` is false, GPT failure /
+   * missing caller is a loud blocker (C0) — not a silent deterministic report.
    */
   gptCaller?: GptJsonCaller | null;
   /**
@@ -328,13 +332,69 @@ function resolveGptCaller(input: CanonicalPrepareInput): GptJsonCaller | null {
   if (process.env.NETWORK_CALLS === "0") return null;
   if (String(process.env.ORION_GPT_REPORT_COPY ?? "1") === "0") return null;
   const ai = digitalProfileConfig.aiAnalyst;
-  if (!ai.enabled || !ai.openAiApiKey) return null;
+  if (!ai.enabled || !ai.openAiApiKey || !ai.model.trim()) return null;
   // One-shot HTTP attempt. Stage 2 retries via enhanceSectionPacksWithGptCopy
   // queue; stage 1 uses callOpenAiStrictJson (queued) below.
   return async (args) => {
     const { callOpenAiStrictJsonOnce } = await import("../orion-golden/gpt/openai-json-client");
     return callOpenAiStrictJsonOnce(args);
   };
+}
+
+/** C0 — fail-loud when production forbids silent deterministic GPT fallback. */
+function assertGptFallbackPolicy(input: {
+  artifactsDir: string;
+  deckDir: string;
+  gptCallerPresent: boolean;
+  stage1Applied: boolean;
+}): void {
+  const copyPath = join(input.deckDir, "gpt-report-copy.json");
+  let stage2Fragments: Array<{ fragmentKey: string; status: string }> = [];
+  if (existsSync(copyPath)) {
+    try {
+      const parsed = JSON.parse(readFileSync(copyPath, "utf8")) as {
+        fragments?: Array<{ fragmentKey?: string; status?: string }>;
+      };
+      stage2Fragments = (parsed.fragments ?? [])
+        .filter((f) => f.fragmentKey && f.status)
+        .map((f) => ({
+          fragmentKey: String(f.fragmentKey),
+          status: String(f.status),
+        }));
+    } catch {
+      stage2Fragments = [];
+    }
+  }
+
+  const decision = evaluateGptFallbackPolicy({
+    allowDeterministicFallback: digitalProfileConfig.orionV2AllowDeterministicFallback,
+    aiEnabled: digitalProfileConfig.aiAnalyst.enabled,
+    gptCallerPresent: input.gptCallerPresent,
+    stage1Applied: input.stage1Applied,
+    stage2Fragments,
+  });
+
+  writeFileSync(
+    join(input.artifactsDir, "gpt-fallback-policy.json"),
+    `${JSON.stringify(
+      {
+        version: "gpt-fallback-policy-v1",
+        allowDeterministicFallback: digitalProfileConfig.orionV2AllowDeterministicFallback,
+        aiEnabled: digitalProfileConfig.aiAnalyst.enabled,
+        gptCallerPresent: input.gptCallerPresent,
+        stage1Applied: input.stage1Applied,
+        stage2FragmentCount: stage2Fragments.length,
+        decision,
+        at: new Date().toISOString(),
+      },
+      null,
+      2
+    )}\n`,
+    "utf8"
+  );
+
+  if (decision.ok) return;
+  throw new CanonicalPrepareBlockedError(decision.code, decision.reason);
 }
 
 function resolveSubjectProfile(input: CanonicalPrepareInput): ClassifierSubjectProfile {
@@ -830,11 +890,23 @@ export async function runCanonicalReportPrepare(
     const deckInputs = loadDeckInputsFromAnalyticsDir(analyticsDir);
     analyticsDatasetId = deckInputs.sourceDatasetId;
 
-    // GPT layer (fail-safe): stage 1 analyzes the WHOLE verified corpus and
-    // stage 2 rewrites per-slide client copy grounded in that analysis. Any
-    // failure keeps the deterministic report.
+    // GPT layer: stage 1 analyzes the WHOLE verified corpus and stage 2
+    // rewrites per-slide client copy. When deterministic fallback is allowed
+    // (dev/QA), any GPT failure keeps the deterministic report. When forbidden
+    // (production default), assertGptFallbackPolicy fails loud (C0).
     let gptLayer: GptDeckLayer | null = null;
+    let stage1Applied = false;
     const gptCallerOnce = resolveGptCaller(input);
+    if (
+      !gptCallerOnce &&
+      !digitalProfileConfig.orionV2AllowDeterministicFallback &&
+      digitalProfileConfig.aiAnalyst.enabled
+    ) {
+      throw new CanonicalPrepareBlockedError(
+        "GPT_COPY_CALLER_UNAVAILABLE",
+        "deterministic GPT fallback forbidden but GPT caller is unavailable (check DIGITAL_PROFILE_AI_ANALYST_* / OPENAI_API_KEY / model / NETWORK_CALLS)"
+      );
+    }
     if (gptCallerOnce) {
       // Stage 1 owns its queue (single or map-reduce §4.4). Stage 2 keeps a
       // separate once-caller — enhanceSectionPacksWithGptCopy owns that queue.
@@ -870,6 +942,7 @@ export async function runCanonicalReportPrepare(
         truncationRetries = 0;
       }
       if (caseAnalysis) {
+        stage1Applied = true;
         writeFileSync(
           join(analyticsDir, "gpt-case-analysis.json"),
           `${JSON.stringify(caseAnalysis, null, 2)}\n`,
@@ -957,6 +1030,12 @@ export async function runCanonicalReportPrepare(
       baseObservationCountAfter: deckInputs.baseCountAfter,
       gpt: gptLayer,
       forceGptCopy,
+    });
+    assertGptFallbackPolicy({
+      artifactsDir: input.artifactsDir,
+      deckDir,
+      gptCallerPresent: Boolean(gptCallerOnce),
+      stage1Applied,
     });
     if (existsSync(forceGptCopyPath)) {
       try {

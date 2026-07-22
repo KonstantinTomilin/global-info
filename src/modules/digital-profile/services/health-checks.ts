@@ -59,6 +59,10 @@ export interface HealthReport {
   storage: ComponentStatus;
   renderer: RendererStatus;
   authEnabled: boolean;
+  /** C0 — OpenAI model probe when AI analyst is enabled; omitted when AI is off. */
+  openAiModel?: ComponentStatus | "skipped";
+  openAiModelId?: string;
+  openAiModelReason?: string;
 }
 
 /** Overall ok requires database + storage healthy; renderer is non-fatal. */
@@ -67,13 +71,23 @@ export function composeHealth(parts: {
   storage: ComponentStatus;
   renderer: RendererStatus;
   authEnabled: boolean;
+  openAiModel?: ComponentStatus | "skipped";
+  openAiModelId?: string;
+  openAiModelReason?: string;
 }): HealthReport {
+  const aiFatal =
+    parts.openAiModel === "error" &&
+    !digitalProfileConfig.orionV2AllowDeterministicFallback &&
+    digitalProfileConfig.aiAnalyst.enabled;
   return {
-    ok: parts.database === "ok" && parts.storage === "ok",
+    ok: parts.database === "ok" && parts.storage === "ok" && !aiFatal,
     service: "digital-profile",
     database: parts.database,
     storage: parts.storage,
     renderer: parts.renderer,
     authEnabled: parts.authEnabled,
+    ...(parts.openAiModel !== undefined ? { openAiModel: parts.openAiModel } : {}),
+    ...(parts.openAiModelId ? { openAiModelId: parts.openAiModelId } : {}),
+    ...(parts.openAiModelReason ? { openAiModelReason: parts.openAiModelReason } : {}),
   };
 }

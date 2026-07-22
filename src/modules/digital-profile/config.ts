@@ -161,8 +161,10 @@ export const digitalProfileConfig: DigitalProfileConfig = {
       (process.env.DIGITAL_PROFILE_AI_ANALYST_PROVIDER ?? "openai").trim().toLowerCase() === "openai"
         ? "openai"
         : "openai",
-    model: process.env.DIGITAL_PROFILE_AI_ANALYST_MODEL?.trim() || "gpt-5.5",
-    timeoutMs: envInt(process.env.DIGITAL_PROFILE_AI_ANALYST_TIMEOUT_MS, 60000, 1000, 180000),
+    // C0: model id must come from env — no fictitious hardcoded default (e.g. gpt-5.5).
+    model: process.env.DIGITAL_PROFILE_AI_ANALYST_MODEL?.trim() || "",
+    // Reasoning models (gpt-5.6-sol etc.) need more wall time than the old 60s default.
+    timeoutMs: envInt(process.env.DIGITAL_PROFILE_AI_ANALYST_TIMEOUT_MS, 120000, 1000, 600000),
     maxInputItems: envInt(process.env.DIGITAL_PROFILE_AI_ANALYST_MAX_INPUT_ITEMS, 120, 20, 500),
     // REMEDIATION §4.5 — stage-1 default 12000 (was 8000). Reasoning models spend
     // part of the budget on reasoning tokens; truncation triggers one adaptive retry.
@@ -220,6 +222,7 @@ export function describeOrionV2AiReadiness(): OrionV2AiReadiness {
   const hasOpenAiKey = Boolean(ai.openAiApiKey && ai.openAiApiKey.trim().length > 0);
   const aiEnabled = ai.enabled;
   const providerOk = ai.provider === "openai";
+  const hasModel = Boolean(ai.model && ai.model.trim().length > 0);
   return {
     hasOpenAiKey,
     aiEnabled,
@@ -227,7 +230,7 @@ export function describeOrionV2AiReadiness(): OrionV2AiReadiness {
     fallbackAllowed: digitalProfileConfig.orionV2AllowDeterministicFallback,
     provider: "openai",
     model: ai.model,
-    ready: hasOpenAiKey && aiEnabled && providerOk,
+    ready: hasOpenAiKey && aiEnabled && providerOk && hasModel,
   };
 }
 

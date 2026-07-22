@@ -16,6 +16,15 @@ export interface AiAnalystGenerationOutcome {
   };
 }
 
+export class AiAnalystUnavailableError extends Error {
+  reason: string;
+  constructor(reason: string) {
+    super(`AI analyst unavailable: ${reason}`);
+    this.name = "AiAnalystUnavailableError";
+    this.reason = reason;
+  }
+}
+
 function fallbackReasonLabel(reason: string | undefined, lang: "ru" | "en"): string {
   if (!reason) return "";
   const low = reason.toLowerCase();
@@ -26,7 +35,39 @@ function fallbackReasonLabel(reason: string | undefined, lang: "ru" | "en"): str
     return lang === "ru" ? "invalid model response" : "invalid model response";
   if (low.includes("http_401") || low.includes("http_403"))
     return lang === "ru" ? "API key missing" : "API key missing";
+  if (low.includes("model"))
+    return lang === "ru" ? "model unavailable" : "model unavailable";
   return lang === "ru" ? "provider unavailable" : "provider unavailable";
+}
+
+function refuseOrFallback(input: {
+  pack: ReturnType<typeof buildAiAnalystEvidencePack>;
+  lang: "ru" | "en";
+  enabled: boolean;
+  model: string;
+  reason: string;
+  /** When true and fallback allowed, diagnostics.status stays "fallback" (legacy). */
+  softFallbackStatus?: "fallback" | "unavailable";
+}): AiAnalystGenerationOutcome {
+  const allow = digitalProfileConfig.orionV2AllowDeterministicFallback;
+  const label = fallbackReasonLabel(input.reason, input.lang);
+  if (!allow) {
+    throw new AiAnalystUnavailableError(label || input.reason);
+  }
+  const soft = input.softFallbackStatus ?? "unavailable";
+  return {
+    narrative: buildDeterministicAiAnalystNarrative(input.pack, {
+      status: "fallback",
+      warnings: label ? [label] : [input.reason].filter(Boolean),
+    }),
+    diagnostics: {
+      enabled: input.enabled,
+      provider: input.enabled ? "openai" : "none",
+      model: input.model,
+      status: soft,
+      reason: label || input.reason,
+    },
+  };
 }
 
 export async function generateAiAnalystNarrative(
@@ -38,41 +79,37 @@ export async function generateAiAnalystNarrative(
     maxInputItems: cfg.maxInputItems,
   });
 
-  const fallbackBase = buildDeterministicAiAnalystNarrative(pack, { status: "fallback" });
   if (!cfg.enabled) {
-    return {
-      narrative: {
-        ...fallbackBase,
-        status: "fallback",
-        generatedBy: "deterministic",
-        provider: "none",
-      },
-      diagnostics: {
-        enabled: false,
-        provider: "none",
-        model: cfg.model,
-        status: "fallback",
-        reason: lang === "ru" ? "disabled by config" : "disabled by config",
-      },
-    };
+    return refuseOrFallback({
+      pack,
+      lang,
+      enabled: false,
+      model: cfg.model,
+      reason: "disabled by config",
+      softFallbackStatus: "fallback",
+    });
+  }
+
+  if (!cfg.model.trim()) {
+    return refuseOrFallback({
+      pack,
+      lang,
+      enabled: true,
+      model: cfg.model,
+      reason: "model_id_missing",
+    });
   }
 
   const apiKey = cfg.openAiApiKey;
   if (!apiKey) {
-    const reason = "api_key_missing";
-    return {
-      narrative: buildDeterministicAiAnalystNarrative(pack, {
-        status: "fallback",
-        warnings: [fallbackReasonLabel(reason, lang)],
-      }),
-      diagnostics: {
-        enabled: true,
-        provider: "openai",
-        model: cfg.model,
-        status: "fallback",
-        reason: fallbackReasonLabel(reason, lang),
-      },
-    };
+    return refuseOrFallback({
+      pack,
+      lang,
+      enabled: true,
+      model: cfg.model,
+      reason: "api_key_missing",
+      softFallbackStatus: "fallback",
+    });
   }
 
   try {
@@ -116,19 +153,15 @@ export async function generateAiAnalystNarrative(
       },
     };
   } catch (error) {
-    const reason = fallbackReasonLabel(error instanceof Error ? error.message : "unknown", lang);
-    return {
-      narrative: buildDeterministicAiAnalystNarrative(pack, {
-        status: "fallback",
-        warnings: reason ? [reason] : [],
-      }),
-      diagnostics: {
-        enabled: true,
-        provider: "openai",
-        model: cfg.model,
-        status: "fallback",
-        reason,
-      },
-    };
+    if (error instanceof AiAnalystUnavailableError) throw error;
+    const reason = error instanceof Error ? error.message : "unknown";
+    return refuseOrFallback({
+      pack,
+      lang,
+      enabled: true,
+      model: cfg.model,
+      reason,
+      softFallbackStatus: "fallback",
+    });
   }
 }

@@ -163,6 +163,13 @@ export function validateDigitalProfileEnv(
   // Stage R8.3 / REMEDIATION §4.1 — AI analyst narrative config.
   const aiEnabled = bool(env.DIGITAL_PROFILE_AI_ANALYST_ENABLED);
   const isProd = (env.NODE_ENV ?? "").toLowerCase() === "production";
+  const fallbackAllowedExplicit = env.DIGITAL_PROFILE_ORION_V2_ALLOW_DETERMINISTIC_FALLBACK;
+  const fallbackAllowed =
+    fallbackAllowedExplicit == null || fallbackAllowedExplicit.trim() === ""
+      ? !isProd
+      : bool(fallbackAllowedExplicit);
+  const modelId = (env.DIGITAL_PROFILE_AI_ANALYST_MODEL ?? "").trim();
+
   if (!aiEnabled && isProd) {
     warnings.push(
       "DIGITAL_PROFILE_AI_ANALYST_ENABLED is false in production — клиентские отчёты будут детерминированными."
@@ -176,10 +183,24 @@ export function validateDigitalProfileEnv(
       );
     }
     if (!env.OPENAI_API_KEY || env.OPENAI_API_KEY.trim().length === 0) {
-      warnings.push(
-        "DIGITAL_PROFILE_AI_ANALYST_ENABLED=true but OPENAI_API_KEY is missing; deterministic fallback will be used."
-      );
+      const msg =
+        "DIGITAL_PROFILE_AI_ANALYST_ENABLED=true but OPENAI_API_KEY is missing.";
+      if (isProd || !fallbackAllowed) errors.push(msg);
+      else warnings.push(`${msg} Deterministic fallback will be used.`);
     }
+    // C0: model id is required from env when AI is enabled — no code default.
+    if (!modelId) {
+      const msg =
+        "DIGITAL_PROFILE_AI_ANALYST_ENABLED=true but DIGITAL_PROFILE_AI_ANALYST_MODEL is empty (set a real OpenAI model id, e.g. gpt-5.6-sol).";
+      if (isProd || !fallbackAllowed) errors.push(msg);
+      else warnings.push(msg);
+    }
+  } else if (isProd && !fallbackAllowed && !modelId) {
+    // Production with fallback forbidden still needs a model when AI is later enabled;
+    // advisory only when AI is off.
+    warnings.push(
+      "DIGITAL_PROFILE_AI_ANALYST_MODEL is empty; set it before enabling the AI analyst in production."
+    );
   }
 
   // Strict canonical gate: require AI report layer (default off).

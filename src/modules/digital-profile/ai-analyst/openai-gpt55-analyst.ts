@@ -69,7 +69,7 @@ async function postChatCompletion(
         authorization: `Bearer ${options.apiKey}`,
       },
       body: JSON.stringify({
-        model: options.model || "gpt-5.5",
+        model: options.model,
         temperature: 0.1,
         max_completion_tokens: options.maxOutputTokens,
         response_format: { type: "json_object" },
