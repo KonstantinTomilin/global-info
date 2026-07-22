@@ -58,12 +58,13 @@ function surfaceAnglesFromBlock(block: ComposedThemeBlock): MaterialDisclosure["
 
 function pickFullOwner(finding: Finding): MaterialDisclosure["fullOwnerFragment"] {
   const regions = (finding.regions ?? []).map((r) => r.toUpperCase());
-  if (regions.some((r) => r === "RU")) return "RU_SUMMARY";
   if (regions.some((r) => r === "UAE" || r === "INTERNATIONAL" || r === "GLOBAL")) {
     return "UAE_SUMMARY";
   }
-  // No region tag — keep full on executive so the material is still disclosed once.
-  return "EXECUTIVE_SUMMARY";
+  // Full ORION paragraph belongs on a regional summary page (budget-safe cards
+  // on EXECUTIVE_SUMMARY cannot carry fullText — that fails section QA at 900).
+  if (regions.some((r) => r === "RU")) return "RU_SUMMARY";
+  return "RU_SUMMARY";
 }
 
 function blockForFinding(

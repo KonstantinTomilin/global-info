@@ -927,12 +927,12 @@ export function resolveDisclosureClaimText(
   const row = plan?.materials.find((m) => m.findingId === f.findingId);
   if (!row) return String(f.claim ?? "").trim();
 
-  if (
-    fragmentKey === "RU_SUMMARY" ||
-    fragmentKey === "UAE_SUMMARY" ||
-    fragmentKey === "EXECUTIVE_SUMMARY"
-  ) {
+  if (fragmentKey === "RU_SUMMARY" || fragmentKey === "UAE_SUMMARY") {
     return fragmentKey === row.fullOwnerFragment ? row.fullText : row.briefText;
+  }
+  if (fragmentKey === "EXECUTIVE_SUMMARY" || fragmentKey === "DIGITAL_PROFILE_OVERVIEW") {
+    // Executive cards are budget-capped (~900); never put full ORION prose here.
+    return row.briefText;
   }
   if (fragmentKey === "RISK_MATRIX") {
     // Matrix is never the full-disclosure owner and must not clone exec brief.

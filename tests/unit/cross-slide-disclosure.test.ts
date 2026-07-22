@@ -111,9 +111,29 @@ describe("C6 cross-slide disclosure", () => {
       theme: "Криминальные / судебные материалы",
     });
     expect(resolveDisclosureClaimText(f, "RU_SUMMARY", extras)).toBe(m.fullText);
+    // Executive never carries fullText (section QA bullet budget).
     expect(resolveDisclosureClaimText(f, "EXECUTIVE_SUMMARY", extras)).toBe(m.briefText);
+    expect(resolveDisclosureClaimText(f, "EXECUTIVE_SUMMARY", extras)).not.toBe(
+      m.fullText
+    );
     expect(resolveDisclosureClaimText(f, "RISK_MATRIX", extras)).toBe(m.matrixText);
     expect(resolveDisclosureClaimText(f, "RU_SERP", extras)).toBe(m.surfaceAngles.serp);
+  });
+
+  it("defaults full owner to RU_SUMMARY even without region tags", () => {
+    const plan = buildCrossSlideDisclosurePlan({
+      caseId: "c",
+      datasetId: "d",
+      composed: composed(),
+      findings: [
+        finding({
+          findingId: "finding-criminal",
+          theme: "Криминальные / судебные материалы",
+          regions: [],
+        }),
+      ],
+    });
+    expect(plan.materials[0]!.fullOwnerFragment).toBe("RU_SUMMARY");
   });
 
   it("flags identical long sentences across fragments", () => {

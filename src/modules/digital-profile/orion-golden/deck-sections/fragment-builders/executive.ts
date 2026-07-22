@@ -26,6 +26,7 @@ import {
   VISUAL_ASSET_UNAVAILABLE,
   changeSinceLastReportLine,
   chunk,
+  bulletWithFindingId,
   claimBodyWithoutTheme,
   clampClientText,
   fitClientSentences,
@@ -40,7 +41,6 @@ import {
   uniqueRefs,
   verdictClientLabel,
 } from "./shared";
-import { bulletWithFindingIdAtomic } from "../semantic-summary-pagination";
 
 /**
  * §7.2 — compact freshness + change line for surfaces that render narrative/bullets
@@ -391,8 +391,9 @@ export function buildExecutiveSummaryFragment(
       .join("\n");
     const lines = [`«${k.title}»`, core];
     if (risk?.advice) lines.push(`Что делать: ${risk.advice}`);
-    // C7 — keep theme block whole; pagination moves overflow slides.
-    return bulletWithFindingIdAtomic(lines.filter(Boolean).join("\n"), k.findingId);
+    // Executive cards are narrow (section QA bullet budget 900). C6 briefText
+    // only; fitStructuredBullet drops whole lines — never mid-sentence cut.
+    return bulletWithFindingId(lines.filter(Boolean).join("\n"), k.findingId, 900);
   });
   const bullets = es.keyFindings.map((k) => {
     const finding = scoped.findings.find((f) => f.findingId === k.findingId);
@@ -413,7 +414,7 @@ export function buildExecutiveSummaryFragment(
     const risk = matchGptKeyRisk(k.title, gpt?.keyRisks);
     const lines = [`«${k.title}»`, concrete];
     if (risk?.advice) lines.push(`Что делать: ${risk.advice}`);
-    return bulletWithFindingIdAtomic(lines.filter(Boolean).join("\n"), k.findingId);
+    return bulletWithFindingId(lines.filter(Boolean).join("\n"), k.findingId, 900);
   });
   // Sparse but complete collection: keep a client-safe page that states
   // there are no confirmed findings — never invent risks. Still show
@@ -746,10 +747,7 @@ export function buildDigitalProfileOverviewFragment(
     .map((f) => {
       // C6 — overview lists themes briefly; full prose lives on regional owner.
       const body = themedClaim(f, extras, "DIGITAL_PROFILE_OVERVIEW");
-      const marker = ` [${f.findingId}]`;
-      return body.length + marker.length <= 520
-        ? body + marker
-        : clampClientText(body.replace(/\n/gu, " "), 480) + marker;
+      return bulletWithFindingId(body, f.findingId, 520);
     });
   return {
     slides: [
