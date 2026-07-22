@@ -15,7 +15,10 @@ import {
   ADVERSE_THEME_IDS,
   resolveThemeRef,
 } from "./canonical-claim-builder";
-import { countIncompleteSentences } from "./incomplete-client-sentences";
+import {
+  countIncompleteSentences,
+  sampleIncompleteSentences,
+} from "./incomplete-client-sentences";
 import { matchInternalClientToken } from "../client/load-client-text-contract";
 import { scanOrionGoldenClientTextForForbiddenTokens } from "../client/client-text-sanitizer";
 
@@ -44,9 +47,12 @@ function isDatabaseTheme(themeId: string, themeLabel: string): boolean {
 }
 
 function ensureTerminalSentence(text: string): string {
-  const t = String(text ?? "").replace(/\s+/gu, " ").trim();
+  let t = String(text ?? "").replace(/\s+/gu, " ").trim();
   if (!t) return t;
-  if (/[.!?…]$/u.test(t)) return t;
+  // Composed prose must not terminate on ellipsis — that trips C5 mid-cut gate.
+  t = t.replace(/(?:\.\.\.|…)+$/u, "").trim();
+  if (!t) return t;
+  if (/[.!?]$/u.test(t)) return t;
   if (/[»"”']$/u.test(t)) return `${t}.`;
   return `${t}.`;
 }
@@ -144,7 +150,9 @@ function composeThemeBlock(input: {
     articles,
     whyItMatters: why,
     recommendedChecks:
-      checks.length > 0 ? checks : ["Проверить первоисточники по теме"],
+      checks.length > 0
+        ? checks
+        : [ensureTerminalSentence("Проверить первоисточники по теме")],
     evidenceRefs: [...new Set(articles.map((a) => a.evidenceRef))],
   };
 }
@@ -340,8 +348,22 @@ export function assertComposedSummaryGatesPass(summary: ComposedClientSummary): 
     );
   }
   if (g.SUMMARY_INCOMPLETE_SENTENCES !== 0) {
+    const samples: string[] = [];
+    for (const b of [...summary.mediaThemeBlocks, ...summary.databaseThemeBlocks]) {
+      for (const t of [
+        b.conclusion,
+        b.whyItMatters,
+        ...b.articles.map((a) => a.body),
+        ...b.recommendedChecks,
+      ]) {
+        samples.push(...sampleIncompleteSentences(t, 2));
+        if (samples.length >= 3) break;
+      }
+      if (samples.length >= 3) break;
+    }
     throw new Error(
-      `SUMMARY_INCOMPLETE_SENTENCES=${g.SUMMARY_INCOMPLETE_SENTENCES}`
+      `SUMMARY_INCOMPLETE_SENTENCES=${g.SUMMARY_INCOMPLETE_SENTENCES}` +
+        (samples.length ? `; ${samples.join(" | ")}` : "")
     );
   }
 }

@@ -293,6 +293,24 @@ export async function evaluateUnifiedCollectionRecoveryEligibility(input: {
         recoveryReason: "ASSEMBLY_RESUME",
       };
     }
+    // C5–C8 editorial gates with intact composite — rebuild analytics/render only.
+    const isClientSummaryGate =
+      job.lastErrorCode === "CLIENT_SUMMARY_GATE_FAILED" ||
+      /SUMMARY_INCOMPLETE_SENTENCES|SUMMARY_TECHNICAL_COPY|CLIENT_INCOMPLETE_SENTENCES|CLIENT_TEXT_TRUNCATIONS|CROSS_SLIDE_DUPLICATE/i.test(
+        `${job.lastErrorCode ?? ""} ${job.lastError ?? ""}`
+      );
+    if (
+      isClientSummaryGate &&
+      Boolean(job.compositeDatasetId) &&
+      Boolean(job.baseReportRunId) &&
+      manifestHasBaseObservations(manifest)
+    ) {
+      return {
+        recoveryAllowed: true,
+        recoveryBlockerReason: null,
+        recoveryReason: "CLIENT_SUMMARY_RESUME",
+      };
+    }
     return {
       recoveryAllowed: false,
       recoveryBlockerReason: "FAILED_TERMINAL_NOT_RECOVERABLE",

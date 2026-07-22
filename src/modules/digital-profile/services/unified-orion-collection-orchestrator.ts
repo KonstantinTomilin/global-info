@@ -1363,6 +1363,10 @@ async function stepPrepare(
       code === "ASSEMBLY_FAILED" ||
       code === "REQUIRED_SECTION_FAILED" ||
       /required sections failed/i.test(message);
+    const isClientSummaryGateFailure =
+      /SUMMARY_INCOMPLETE_SENTENCES|SUMMARY_TECHNICAL_COPY_TOKENS|SUMMARY_MATERIAL_THEME_COVERAGE|SUMMARY_CONCRETE_EXAMPLES|SUMMARY_UNSUPPORTED_ASSERTIONS|PER_THEME_WHY_IS_ARTICLE_SPECIFIC|CLIENT_INCOMPLETE_SENTENCES|CLIENT_TEXT_TRUNCATIONS|CROSS_SLIDE_DUPLICATE/i.test(
+        message
+      );
     const assemblySparse = isAssemblyFailure && linkageIncomplete;
 
     if (code === "RENDER_FAILED") {
@@ -1378,6 +1382,15 @@ async function stepPrepare(
       return await failRetryable(job, code, message, [
         "CANONICAL_PREPARE_BLOCKED",
         "retryable-assembly-failure",
+      ]);
+    }
+
+    // C5–C8 editorial gates: collection/composite already paid — allow rebuild
+    // without another Arsenkin pass (live Deripaska SUMMARY_INCOMPLETE_SENTENCES=1).
+    if (isClientSummaryGateFailure && Boolean(job.compositeDatasetId) && !linkageIncomplete) {
+      return await failRetryable(job, "CLIENT_SUMMARY_GATE_FAILED", message, [
+        "CANONICAL_PREPARE_BLOCKED",
+        "retryable-client-summary-gate",
       ]);
     }
 

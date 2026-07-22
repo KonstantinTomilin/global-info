@@ -221,4 +221,20 @@ describe("C5 client-summary-composer", () => {
       )
     ).toBeGreaterThanOrEqual(1);
   });
+
+  it("does not flag closed sentences that contain an odd ASCII quote", () => {
+    expect(
+      countIncompleteSentences(
+        'В материале rbc.ru сообщается — компания "Русал" под ограничениями.'
+      )
+    ).toBe(0);
+  });
+
+  it("still flags trailing ellipsis mid-cuts without a hard stop", () => {
+    expect(
+      countIncompleteSentences(
+        "После публикации расследования ФБК об отдыхе Дерипаски…"
+      )
+    ).toBeGreaterThanOrEqual(1);
+  });
 });
