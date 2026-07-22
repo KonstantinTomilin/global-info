@@ -34,6 +34,7 @@ import {
   isAdverse,
   makeSlotSlide,
   matchGptKeyRisk,
+  resolveDisclosureClaimText,
   riskLabel,
   sourceLine,
   splitClientParagraphs,
@@ -368,8 +369,17 @@ export function buildExecutiveSummaryFragment(
   // is a short trailing line, never a replacement for the factual basis.
   const cardTexts = es.keyFindings.map((k) => {
     const finding = scoped.findings.find((f) => f.findingId === k.findingId);
+    const disclosure = finding
+      ? claimBodyWithoutTheme(finding, {
+          disclosureText: resolveDisclosureClaimText(
+            finding,
+            "EXECUTIVE_SUMMARY",
+            extras
+          ),
+        })
+      : "";
     const concrete = finding
-      ? claimBodyWithoutTheme(finding)
+      ? disclosure
       : String(k.factualBasis ?? "")
           .replace(/^Подтверждённый факт:\s*/iu, "")
           .trim();
@@ -386,8 +396,17 @@ export function buildExecutiveSummaryFragment(
   });
   const bullets = es.keyFindings.map((k) => {
     const finding = scoped.findings.find((f) => f.findingId === k.findingId);
+    const disclosure = finding
+      ? claimBodyWithoutTheme(finding, {
+          disclosureText: resolveDisclosureClaimText(
+            finding,
+            "EXECUTIVE_SUMMARY",
+            extras
+          ),
+        })
+      : "";
     const concrete = finding
-      ? claimBodyWithoutTheme(finding)
+      ? disclosure
       : String(k.factualBasis ?? "")
           .replace(/^Подтверждённый факт:\s*/iu, "")
           .trim();
@@ -547,7 +566,10 @@ export const RISK_MATRIX_LIKELY_AGGREGATE_ID = "finding-likely-aggregate";
 
 function riskMatrixDetail(f: Finding, extras?: FragmentExtras): string {
   // PDF-40 G.1b / PDF-46 I.4 — headline shows theme; keep structured lines whole.
-  const claim = claimBodyWithoutTheme(f);
+  // C6 — matrix uses brief disclosure, never the full ORION paragraph.
+  const claim = claimBodyWithoutTheme(f, {
+    disclosureText: resolveDisclosureClaimText(f, "RISK_MATRIX", extras),
+  });
   if (f.subjectMatch === "LIKELY_SUBJECT") {
     return fitStructuredBullet(
       [
@@ -717,7 +739,8 @@ export function buildRiskMatrixFragment(
 
 export function buildDigitalProfileOverviewFragment(
   sectionId: SectionType,
-  scoped: ScopedFragmentInput
+  scoped: ScopedFragmentInput,
+  extras: FragmentExtras = {}
 ): FragmentBuildOutput {
   const [slot] = slotsForFragment("DIGITAL_PROFILE_OVERVIEW");
   const s = scoped.metricSnapshot;
@@ -727,7 +750,8 @@ export function buildDigitalProfileOverviewFragment(
     .sort((a, b) => (RISK_ORDER[b.riskLevel] ?? 0) - (RISK_ORDER[a.riskLevel] ?? 0))
     .slice(0, 4)
     .map((f) => {
-      const body = themedClaim(f);
+      // C6 — overview lists themes briefly; full prose lives on regional owner.
+      const body = themedClaim(f, extras, "DIGITAL_PROFILE_OVERVIEW");
       const marker = ` [${f.findingId}]`;
       return body.length + marker.length <= 520
         ? body + marker

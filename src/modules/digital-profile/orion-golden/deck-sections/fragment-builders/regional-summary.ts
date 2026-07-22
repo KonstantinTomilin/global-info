@@ -166,7 +166,13 @@ export function buildRegionalSummaryFragment(
     const bullets = [
       ...scoped.findings
         .slice(0, 8)
-        .map((f) => bulletWithFindingId(localizedThemedClaim(f, scoped), f.findingId, 900)),
+        .map((f) =>
+          bulletWithFindingId(
+            localizedThemedClaim(f, scoped, extras, key),
+            f.findingId,
+            900
+          )
+        ),
       ...(uncategorized ? [uncategorized.bullet] : []),
       ...(likelyN > 0
         ? [

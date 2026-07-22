@@ -45,7 +45,8 @@ export function buildSerpFragment(
   key: FragmentKey,
   sectionId: SectionType,
   regionLabel: string,
-  scoped: ScopedFragmentInput
+  scoped: ScopedFragmentInput,
+  extras: FragmentExtras = {}
 ): FragmentBuildOutput {
   const [slot] = slotsForFragment(key);
   const organic = scoped.surfaceUnits.filter((u) => u.surface === "organic");
@@ -117,7 +118,7 @@ export function buildSerpFragment(
     // Renderer `orion_golden_search_table` paints only `narrative` above the
     // table (not whatWasFound/bullets when rows exist) — put the §7.1 sidebar
     // conclusion there so the page composition is visible in PDF/PPTX.
-    const pageBlocks = pageFindingBlocks(scoped, view);
+    const pageBlocks = pageFindingBlocks(scoped, view, undefined, extras, key);
     const slide = makeSlotSlide({
       slot,
       sectionId,

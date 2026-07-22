@@ -14,6 +14,7 @@ import { join } from "node:path";
 import type { VerifiedFindingBundle } from "../contracts/verified-finding-bundle";
 import type { Finding } from "../contracts/finding";
 import type { SurfaceAnalysis } from "../contracts/surface-analysis";
+import type { CrossSlideDisclosurePlan } from "../contracts/cross-slide-disclosure-plan";
 import type {
   ScopedEvidenceIndex,
   MetricSnapshot,
@@ -111,6 +112,8 @@ export type CanonicalDeckInputs = {
   uncategorizedMaterials: UncategorizedMaterialsDeckInput | null;
   /** REMEDIATION §7.4 — coverage cells for empty-state copy (optional). */
   surfaceCollectionHints: SurfaceCollectionHint[];
+  /** C6 — optional on older analytics dirs; when absent, builders use legacy claim text. */
+  crossSlideDisclosurePlan: CrossSlideDisclosurePlan | null;
 };
 
 function readJson<T>(path: string): T {
@@ -409,6 +412,16 @@ export function loadDeckInputsFromAnalyticsDir(analyticsDir: string): CanonicalD
     perRegionCounts,
   };
 
+  const disclosurePath = join(analyticsDir, "cross-slide-disclosure-plan.json");
+  let crossSlideDisclosurePlan: CrossSlideDisclosurePlan | null = null;
+  if (existsSync(disclosurePath)) {
+    try {
+      crossSlideDisclosurePlan = readJson<CrossSlideDisclosurePlan>(disclosurePath);
+    } catch {
+      crossSlideDisclosurePlan = null;
+    }
+  }
+
   return {
     caseId: binding.caseId,
     reportRunId: binding.baseReportRunId,
@@ -424,5 +437,6 @@ export function loadDeckInputsFromAnalyticsDir(analyticsDir: string): CanonicalD
     baseCountAfter: observations.baseCount,
     uncategorizedMaterials,
     surfaceCollectionHints,
+    crossSlideDisclosurePlan,
   };
 }

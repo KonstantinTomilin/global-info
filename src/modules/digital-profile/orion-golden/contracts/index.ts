@@ -17,5 +17,6 @@ export * from "./source-content-index";
 export * from "./item-analysis";
 export * from "./canonical-claim";
 export * from "./composed-client-summary";
+export * from "./cross-slide-disclosure-plan";
 export * from "./validate";
 export * from "./fixtures";

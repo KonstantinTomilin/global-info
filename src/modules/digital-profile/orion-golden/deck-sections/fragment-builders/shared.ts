@@ -4,6 +4,7 @@
  */
 
 import type {
+  FragmentKey,
   SectionType,
   SlideBody,
   SlideContentContract,
@@ -108,6 +109,8 @@ export type FragmentExtras = {
     removedCount: number;
     previousJobId: string | null;
   };
+  /** C6 — one full disclosure per material; brief/surface angles elsewhere. */
+  crossSlideDisclosurePlan?: import("../../contracts/cross-slide-disclosure-plan").CrossSlideDisclosurePlan | null;
 };
 
 /** Loose theme match: token overlap between a finding theme and a GPT risk theme. */
@@ -654,13 +657,27 @@ export function pageRowCompositionBlocks(
 export function pageFindingBlocks(
   scoped: ScopedFragmentInput,
   view: PageEvidenceView,
-  extraCheck?: string
+  extraCheck?: string,
+  extras?: FragmentExtras,
+  fragmentKey?: FragmentKey
 ): Partial<SlideBody> {
   const adverse = view.findings.filter(isAdverse);
   const top = view.findings[0];
   if (top) {
+    const surfaceAngle =
+      extras && fragmentKey
+        ? resolveDisclosureClaimText(top, fragmentKey, extras)
+        : null;
+    const useSurfaceAngle =
+      Boolean(surfaceAngle) &&
+      fragmentKey &&
+      (fragmentKey.includes("SERP") ||
+        fragmentKey.includes("IMAGES") ||
+        fragmentKey.includes("SUGGESTIONS"));
     return {
-      whatWasFound: pageScopedConclusion(top, view),
+      whatWasFound: useSurfaceAngle
+        ? clampClientText(surfaceAngle!, 400)
+        : pageScopedConclusion(top, view),
       whyItMatters: clampClientText(
         adverse.length
           ? `Материалы этой страницы затрагивают тем повышенного внимания: ${adverse.length}. Они видны при первичной проверке субъекта.`
@@ -868,8 +885,18 @@ export function structureThemeClaimText(text: string): string {
 }
 
 /** Detail body without the leading «Theme» line (risk-matrix headline already shows it). */
-export function claimBodyWithoutTheme(f: Finding): string {
-  const full = themedClaim(f);
+export function claimBodyWithoutTheme(
+  f: Finding,
+  opts?: { disclosureText?: string }
+): string {
+  const full = opts?.disclosureText
+    ? reflowThemeBullet(
+        opts.disclosureText.toLowerCase().startsWith(f.theme.toLowerCase()) ||
+          opts.disclosureText.startsWith("«")
+          ? opts.disclosureText
+          : `«${f.theme}»\n${opts.disclosureText}`
+      )
+    : themedClaim(f);
   const lines = full.split("\n").map((l) => l.trim()).filter(Boolean);
   if (lines.length <= 1) return full;
   if (
@@ -882,12 +909,57 @@ export function claimBodyWithoutTheme(f: Finding): string {
 }
 
 /**
+ * C6 — resolve full vs brief claim text for a fragment role.
+ * Without a plan, returns the finding's stored claim (legacy behavior).
+ */
+export function resolveDisclosureClaimText(
+  f: Finding,
+  fragmentKey: FragmentKey,
+  extras?: FragmentExtras
+): string {
+  const plan = extras?.crossSlideDisclosurePlan;
+  const row = plan?.materials.find((m) => m.findingId === f.findingId);
+  if (!row) return String(f.claim ?? "").trim();
+
+  if (
+    fragmentKey === "RU_SUMMARY" ||
+    fragmentKey === "UAE_SUMMARY" ||
+    fragmentKey === "EXECUTIVE_SUMMARY"
+  ) {
+    return fragmentKey === row.fullOwnerFragment ? row.fullText : row.briefText;
+  }
+  if (fragmentKey === "RISK_MATRIX") {
+    // Matrix is never the full-disclosure owner and must not clone exec brief.
+    return row.matrixText;
+  }
+  if (
+    fragmentKey === "RU_SERP" ||
+    fragmentKey === "UAE_SERP" ||
+    fragmentKey === "RU_SERP_SCREENSHOT" ||
+    fragmentKey === "UAE_SERP_SCREENSHOT"
+  ) {
+    return row.surfaceAngles.serp;
+  }
+  if (fragmentKey === "RU_IMAGES" || fragmentKey === "UAE_IMAGES") {
+    return row.surfaceAngles.images;
+  }
+  if (fragmentKey === "RU_SUGGESTIONS" || fragmentKey === "UAE_SUGGESTIONS") {
+    return row.surfaceAngles.suggestions;
+  }
+  return row.briefText;
+}
+
+/**
  * PDF-38 F.1 — theme on its own line (renderer bolds it), claim body below.
  * Keeps multi-line claim structure from the synthesizer (stats / sources /
  * examples) so the PDF never collapses into one grey paragraph.
  */
-export function themedClaim(f: Finding): string {
-  const claim = structureThemeClaimText(String(f.claim ?? "").trim());
+export function themedClaim(f: Finding, extras?: FragmentExtras, fragmentKey?: FragmentKey): string {
+  const raw =
+    extras && fragmentKey
+      ? resolveDisclosureClaimText(f, fragmentKey, extras)
+      : String(f.claim ?? "").trim();
+  const claim = structureThemeClaimText(raw);
   if (!claim) return `«${f.theme}»`;
   const withTheme =
     claim.toLowerCase().startsWith(f.theme.toLowerCase()) || claim.startsWith("«")
@@ -903,13 +975,23 @@ export function themedClaim(f: Finding): string {
  * page's own region. Single-region findings keep the original claim, and the
  * global claim stays untouched for the executive contour.
  */
-export function localizedThemedClaim(f: Finding, scoped: ScopedFragmentInput): string {
+export function localizedThemedClaim(
+  f: Finding,
+  scoped: ScopedFragmentInput,
+  extras?: FragmentExtras,
+  fragmentKey?: FragmentKey
+): string {
   const regions = scoped.scope.regions;
-  if (!regions || regions.length === 0) return themedClaim(f);
+  // C6: when a disclosure plan exists, never fall back to copying the full
+  // stored claim onto a non-owner regional page.
+  if (extras?.crossSlideDisclosurePlan && fragmentKey) {
+    return themedClaim(f, extras, fragmentKey);
+  }
+  if (!regions || regions.length === 0) return themedClaim(f, extras, fragmentKey);
   const frs = f.regions ?? [];
   const exclusive =
     frs.length > 0 && frs.every((fr) => regions.some((r) => regionMatches(r, fr)));
-  if (exclusive) return themedClaim(f);
+  if (exclusive) return themedClaim(f, extras, fragmentKey);
 
   const themeDef = getFindingThemes().find(
     (t) => t.label === f.theme || f.theme.toLowerCase().includes(t.label.toLowerCase())

@@ -19,6 +19,10 @@ import { validateAssembly, type AssemblyValidationReport } from "./assembly-vali
 import type { VerifiedFindingBundle } from "../contracts/verified-finding-bundle";
 import { getClientTextContract } from "../client/load-client-text-contract";
 import { reflowNarrativeParagraphs, reflowThemeBullet } from "./fragment-builders/shared";
+import {
+  assertCrossSlideDedupeGatesPass,
+  buildCrossSlideDedupeReport,
+} from "./cross-slide-dedupe-qa";
 
 export type DeckBuildResult = {
   packs: SectionPackV2[];
@@ -103,6 +107,16 @@ export function runDeckBuild(input: {
     });
     pack.validation = { passed: report.passed, issues: report.issues };
     validationReports.set(pack.fragmentKey, report);
+  }
+
+  // C6 — cross-slide duplicate sentence / one-full-disclosure gate.
+  const disclosurePlan = ctx.extras.crossSlideDisclosurePlan ?? null;
+  if (disclosurePlan) {
+    const dedupeReport = buildCrossSlideDedupeReport(packs, disclosurePlan);
+    const dedupePath = join(input.outputRoot, "cross-slide-dedupe-report.json");
+    writeFileSync(dedupePath, JSON.stringify(dedupeReport, null, 2), "utf8");
+    artifacts["cross-slide-dedupe-report.json"] = dedupePath;
+    assertCrossSlideDedupeGatesPass(dedupeReport);
   }
 
   // 3. Persist every SectionPack independently.

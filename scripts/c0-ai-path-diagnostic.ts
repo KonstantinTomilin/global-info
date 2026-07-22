@@ -190,6 +190,7 @@ async function main(): Promise<void> {
         gptCaseAnalysis: caseAnalysis ?? undefined,
         uncategorizedMaterials: deckInputs.uncategorizedMaterials ?? undefined,
         surfaceCollectionHints: deckInputs.surfaceCollectionHints,
+        crossSlideDisclosurePlan: deckInputs.crossSlideDisclosurePlan,
       },
     },
     bundleForValidation: deckInputs.mergedBundle,

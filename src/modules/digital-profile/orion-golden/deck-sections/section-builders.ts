@@ -165,13 +165,13 @@ function composeFragment(
     case "RISK_MATRIX":
       return buildRiskMatrixFragment(section, scoped, extras);
     case "DIGITAL_PROFILE_OVERVIEW":
-      return buildDigitalProfileOverviewFragment(section, scoped);
+      return buildDigitalProfileOverviewFragment(section, scoped, extras);
     case "RU_SUMMARY":
     case "UAE_SUMMARY":
       return buildRegionalSummaryFragment(key, section, region, scoped, extras);
     case "RU_SERP":
     case "UAE_SERP":
-      return buildSerpFragment(key, section, region, scoped);
+      return buildSerpFragment(key, section, region, scoped, extras);
     case "RU_SERP_SCREENSHOT":
     case "UAE_SERP_SCREENSHOT":
       return buildSerpScreenshotFragment(key, section, region, scoped, extras);
@@ -220,6 +220,7 @@ function extrasHash(key: FragmentKey, extras: FragmentExtras): string {
         surfaceCollectionHints: extras.surfaceCollectionHints ?? [],
         materialFreshness: extras.materialFreshness ?? null,
         reportDiff: extras.reportDiff ?? null,
+        crossSlideDisclosurePlan: extras.crossSlideDisclosurePlan ?? null,
       })
     )
     .digest("hex")

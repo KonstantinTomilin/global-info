@@ -52,7 +52,7 @@ export function buildSuggestionsFragment(
         scoped,
         content: {
           bullets: bullets.length ? bullets : suggestionLines,
-          ...pageFindingBlocks(scoped, view),
+          ...pageFindingBlocks(scoped, view, undefined, extras, key),
           ...(sidebar.explanations.length
             ? {
                 whatWasFound: clampClientText(

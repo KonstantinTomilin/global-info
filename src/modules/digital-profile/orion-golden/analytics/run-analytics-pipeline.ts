@@ -77,6 +77,11 @@ import {
   composeClientSummary,
 } from "./client-summary-composer";
 import type { ComposedClientSummary } from "../contracts/composed-client-summary";
+import {
+  assertDisclosurePlanGatesPass,
+  buildCrossSlideDisclosurePlan,
+} from "./cross-slide-disclosure-planner";
+import type { CrossSlideDisclosurePlan } from "../contracts/cross-slide-disclosure-plan";
 import { getFindingThemes } from "../../config/finding-themes";
 import { isWeakExampleTitle } from "./finding-synthesizer";
 
@@ -129,6 +134,8 @@ export type AnalyticsPipelineResult = {
   canonicalClaims: CanonicalClaimBundle;
   /** C5 — ORION-density composed client summary (terminal theme prose). */
   composedClientSummary: ComposedClientSummary;
+  /** C6 — one full disclosure per material; brief/surface angles elsewhere. */
+  crossSlideDisclosurePlan: CrossSlideDisclosurePlan;
   artifactPaths: Record<string, string>;
 };
 
@@ -721,6 +728,16 @@ export async function runOrionAnalyticsPipeline(
   };
   emit("verified-finding-bundle.json", synthesis.bundle);
 
+  // C6 — cross-slide disclosure plan (full once; brief/surface angles elsewhere).
+  const crossSlideDisclosurePlan = buildCrossSlideDisclosurePlan({
+    caseId: input.caseId,
+    datasetId,
+    composed: composedClientSummary,
+    findings: synthesis.bundle.findings,
+  });
+  assertDisclosurePlanGatesPass(crossSlideDisclosurePlan);
+  emit("cross-slide-disclosure-plan.json", crossSlideDisclosurePlan);
+
   return {
     reconciliation,
     composite,
@@ -735,6 +752,7 @@ export async function runOrionAnalyticsPipeline(
     itemAnalysisBundle,
     canonicalClaims,
     composedClientSummary,
+    crossSlideDisclosurePlan,
     artifactPaths,
   };
 }

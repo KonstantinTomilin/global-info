@@ -49,7 +49,7 @@ export function buildImagesFragment(
             .flatMap((a) => (a.visibleItems ?? []).map((v) => v.ref))
             .filter((r) => Boolean(scoped.evidenceIndex[r]));
     const view = buildPageEvidenceView(scoped, pageRefs);
-    const pageBlocks = pageFindingBlocks(scoped, view);
+    const pageBlocks = pageFindingBlocks(scoped, view, undefined, extras, key);
     const pageDomainSet = new Set(
       view.domains.map((d) => d.toLowerCase()).filter((d) => d && d !== "—")
     );
