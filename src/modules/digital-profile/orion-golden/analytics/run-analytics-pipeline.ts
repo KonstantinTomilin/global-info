@@ -71,6 +71,12 @@ import type { ItemAnalysisBundle } from "../contracts/item-analysis";
 import { buildCanonicalClaims } from "./canonical-claim-builder";
 import type { CanonicalClaimBundle } from "../contracts/canonical-claim";
 import { buildEvidenceQualityDisposition } from "./evidence-quality-gate";
+import {
+  applyComposedClaimsToFindings,
+  assertComposedSummaryGatesPass,
+  composeClientSummary,
+} from "./client-summary-composer";
+import type { ComposedClientSummary } from "../contracts/composed-client-summary";
 import { getFindingThemes } from "../../config/finding-themes";
 import { isWeakExampleTitle } from "./finding-synthesizer";
 
@@ -121,6 +127,8 @@ export type AnalyticsPipelineResult = {
   itemAnalysisBundle: ItemAnalysisBundle;
   /** C3 — canonical claims carrying grounded ItemAnalysis fields. */
   canonicalClaims: CanonicalClaimBundle;
+  /** C5 — ORION-density composed client summary (terminal theme prose). */
+  composedClientSummary: ComposedClientSummary;
   artifactPaths: Record<string, string>;
 };
 
@@ -685,6 +693,34 @@ export async function runOrionAnalyticsPipeline(
   }
   emit("evidence-quality-disposition.json", evidenceQualityDisposition);
 
+  // C5 — editorial composer from grounded CanonicalClaims (not theme constants).
+  const appendixRefs = new Set(
+    evidenceQualityDisposition.entries
+      .filter((e) => e.disposition === "APPENDIX_OTHER")
+      .map((e) => e.evidenceRef)
+  );
+  const composedClientSummary = composeClientSummary({
+    caseId: input.caseId,
+    datasetId,
+    claims: canonicalClaims,
+    excludeEvidenceRefs: appendixRefs,
+  });
+  assertComposedSummaryGatesPass(composedClientSummary);
+  emit("composed-client-summary.json", composedClientSummary);
+
+  // Replace template Finding.claim with composed theme prose; re-emit bundle.
+  synthesis = {
+    ...synthesis,
+    bundle: {
+      ...synthesis.bundle,
+      findings: applyComposedClaimsToFindings(
+        synthesis.bundle.findings,
+        composedClientSummary
+      ),
+    },
+  };
+  emit("verified-finding-bundle.json", synthesis.bundle);
+
   return {
     reconciliation,
     composite,
@@ -698,6 +734,7 @@ export async function runOrionAnalyticsPipeline(
     sourceContentIndex,
     itemAnalysisBundle,
     canonicalClaims,
+    composedClientSummary,
     artifactPaths,
   };
 }

@@ -16,5 +16,6 @@ export * from "./assembled-deck-model";
 export * from "./source-content-index";
 export * from "./item-analysis";
 export * from "./canonical-claim";
+export * from "./composed-client-summary";
 export * from "./validate";
 export * from "./fixtures";

@@ -3,6 +3,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { getFindingThemes } from "../../config/finding-themes";
 import type { Finding } from "../contracts/finding";
 import type { ItemAnalysis, ItemAnalysisBundle } from "../contracts/item-analysis";
 import {
@@ -22,6 +23,16 @@ export const ADVERSE_THEME_IDS = new Set([
   "financial_claims",
   "security_scrutiny",
 ]);
+
+/** Resolve Finding.theme (label or themeId) to a stable themeId + display label. */
+export function resolveThemeRef(themeField: string): { themeId: string; label: string } {
+  const themes = getFindingThemes();
+  const byId = themes.find((t) => t.themeId === themeField);
+  if (byId) return { themeId: byId.themeId, label: byId.label };
+  const byLabel = themes.find((t) => t.label === themeField);
+  if (byLabel) return { themeId: byLabel.themeId, label: byLabel.label };
+  return { themeId: themeField, label: themeField };
+}
 
 function claimIdFor(analysis: ItemAnalysis, theme: string): string {
   return createHash("sha256")
@@ -69,7 +80,8 @@ export function buildCanonicalClaims(input: {
       input.findings,
       findingIdsByRef.get(analysis.evidenceRef) ?? []
     );
-    const theme = linked[0]?.theme ?? "uncategorized";
+    const resolved = resolveThemeRef(linked[0]?.theme ?? "uncategorized");
+    const theme = resolved.themeId;
     const riskLevel = linked[0]?.riskLevel ?? "medium";
     const isAdverseTheme = ADVERSE_THEME_IDS.has(theme);
 

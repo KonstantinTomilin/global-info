@@ -118,8 +118,9 @@ export function pluralRu(n: number, one: string, few: string, many: string): str
 }
 
 /**
- * PDF-40 G.2b — short framing lead (what was found). The concrete meaning
- * comes from quoted headlines + domains, not from these templates alone.
+ * PDF-40 G.2b — short grouping lead only (taxonomy). Terminal client "why"
+ * must come from grounded article analysis (C5), not these constants.
+ * Kept for offline fallback when no grounded examples exist.
  */
 const CLIENT_THEME_FRAMING: Record<string, string> = {
   criminal_legal:
@@ -139,23 +140,24 @@ const CLIENT_THEME_FRAMING: Record<string, string> = {
     "Найдены материалы с акцентом на безопасность и оборонный контур",
 };
 
+/** @deprecated C5 — do not use as terminal client copy; article-specific why wins. */
 const CLIENT_THEME_WHY: Record<string, string> = {
   criminal_legal:
-    "Для банка или партнёра такие сюжеты обычно становятся первым поводом для расширенной проверки.",
+    "Конкретная значимость определяется содержанием найденных материалов и требует проверки первичных документов.",
   pep_rca_watchlist:
-    "Банки и комплаенс-команды отрабатывают такие сигналы в первую очередь при KYC.",
+    "Конкретная значимость определяется статусом в базах и требует сверки с первичными записями.",
   political_exposure:
-    "Это усиливает вопросы к связям, влиянию и приемлемости контрагента для сделки.",
+    "Конкретная значимость определяется содержанием найденных материалов и требует проверки первичных документов.",
   offshore_corporate:
-    "Для KYC это типичный запрос на раскрытие бенефициаров и источников контроля.",
+    "Конкретная значимость определяется содержанием найденных материалов и требует проверки первичных документов.",
   family_associates:
-    "Риск в том, что негатив вокруг связанных лиц переносится на профиль проверяемого.",
+    "Конкретная значимость определяется содержанием найденных материалов и требует проверки первичных документов.",
   financial_claims:
-    "Банки и инвесторы обычно запрашивают статус обязательств и судебные справки.",
+    "Конкретная значимость определяется содержанием найденных материалов и требует проверки первичных документов.",
   business_profile:
     "Деловой фон важен для позиционирования, но сам по себе не перекрывает чувствительные темы риска.",
   security_scrutiny:
-    "Для международных проверок это зона повышенного внимания.",
+    "Конкретная значимость определяется содержанием найденных материалов и требует проверки первичных документов.",
 };
 
 export type ClaimEvidenceExample = { title: string; domain: string };
@@ -422,8 +424,9 @@ export function pickClaimExamples(
 }
 
 /**
- * PDF-40 G.2b / PDF-44 H — concrete claim: framing (+ domain anchor) → quotes → scale → why.
- * Theme label is prepended by consumers (`themedClaim`).
+ * Offline / pre-C5 grouping draft only.
+ * Terminal client copy comes from C5 ClientSummaryComposer (ItemAnalysis-backed).
+ * Do not treat CLIENT_THEME_* constants as final presentation text.
  */
 export function buildClientFacingClaim(input: {
   theme: ThemeDef;
@@ -439,9 +442,10 @@ export function buildClientFacingClaim(input: {
   const baseFraming =
     CLIENT_THEME_FRAMING[input.theme.themeId] ??
     `Найдены публикации по теме «${input.theme.label}»`;
+  // C5 replaces this with article-specific why; keep only a neutral offline stub.
   const why =
     CLIENT_THEME_WHY[input.theme.themeId] ??
-    "Для банка, инвестора или контрагента это сигнал к углублённой проверке.";
+    "Конкретная значимость определяется содержанием найденных материалов и требует проверки первичных документов.";
 
   let examples = (input.examples ?? [])
     .map((e) => ({

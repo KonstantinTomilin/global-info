@@ -104,4 +104,48 @@ describe("C3 canonical-claim-builder", () => {
     expect(claims.claims[0].isAdverseTheme).toBe(true);
     expect(claims.gates.ADVERSE_GROUNDED_COVERAGE).toBe(1);
   });
+
+  it("resolves Finding.theme label to themeId for adverse coverage", () => {
+    const bundle: ItemAnalysisBundle = {
+      schemaVersion: "item-analysis-bundle-v1",
+      caseId: "c",
+      datasetId: "d",
+      promptVersion: GROUNDED_ITEM_ANALYST_PROMPT_VERSION,
+      generatedAt: new Date().toISOString(),
+      analyses: [
+        analysis({
+          evidenceRef: "inventory:2",
+          inventoryId: "2",
+          clientDescription: "Краткий заземлённый пересказ судебного сюжета для проверки.",
+        }),
+      ],
+      groundingReport: {
+        analyzed: 1,
+        groundedSentenceRatio: 1,
+        HALLUCINATED_ENTITIES: 0,
+        UNQUALIFIED_MEDIA_ALLEGATIONS: 0,
+        EMPTY_OR_SILENT_DROP: 0,
+        GROUNDED_SENTENCE_RATIO: 1,
+        fallbackCount: 0,
+        llmCount: 1,
+        SUBJECT_UNIVERSALITY_PASS: true,
+      },
+      fallbackReport: { count: 0, reasons: [] },
+    };
+    const claims = buildCanonicalClaims({
+      caseId: "c",
+      datasetId: "d",
+      itemAnalysis: bundle,
+      findings: [
+        finding({
+          findingId: "f2",
+          theme: "Криминальные / судебные материалы",
+          evidenceRefs: ["inventory:2"],
+        }),
+      ],
+    });
+    expect(claims.claims[0].theme).toBe("criminal_legal");
+    expect(claims.claims[0].isAdverseTheme).toBe(true);
+    expect(claims.gates.ADVERSE_GROUNDED_COVERAGE).toBe(1);
+  });
 });
