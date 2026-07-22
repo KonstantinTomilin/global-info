@@ -468,7 +468,9 @@ export async function recoverUnifiedOrionCollectionJob(input: {
 
     const renderResume = elig2.recoveryReason === "RENDER_RESUME";
     const ingestResume = elig2.recoveryReason === "ARSENKIN_INGEST_RESUME";
-    const assemblyResume = elig2.recoveryReason === "ASSEMBLY_RESUME";
+    const assemblyResume =
+      elig2.recoveryReason === "ASSEMBLY_RESUME" ||
+      elig2.recoveryReason === "CLIENT_SUMMARY_RESUME";
     const ensure = input.deps?.ensureBaseReportRun ?? ensurePersistedUnifiedBaseReportRun;
     let baseReportRunId: string;
     let createdBaseReportRun = false;
