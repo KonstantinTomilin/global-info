@@ -29,6 +29,7 @@ import {
   resolveFindingThemesConfig,
   type ThemeDef,
 } from "../../config/finding-themes";
+import { itemAdverseExampleEligibility } from "./evidence-quality-gate";
 import { domainOf } from "./composite-dataset-builder";
 import { mapRegionBucket, mapSurfaceBucket } from "../classic/composite-serp-overlay-merge";
 
@@ -327,6 +328,15 @@ export function scoreExampleForTheme(item: RawInventoryItem, theme: ThemeDef): n
     if (SERP_TRUNCATED_RE.test(rawTitle.trim()) && theme.keywords.test(rawTitle)) score -= 3;
     else score -= 12;
   }
+  // C4 — content-aware gate: social/meme/non-article never win as adverse examples.
+  if (ADVERSE_THEME_IDS.has(theme.themeId)) {
+    const gate = itemAdverseExampleEligibility(
+      item,
+      theme,
+      isWeakExampleTitle(rawTitle, { theme })
+    );
+    if (!gate.eligibleAsAdverseExample) score -= 100;
+  }
   if (!title && snippet.length >= 40) score += 1;
   return score;
 }
@@ -338,6 +348,15 @@ export function resolveExampleQuote(
   item: RawInventoryItem,
   theme: ThemeDef
 ): ClaimEvidenceExample | null {
+  // C4 — never surface social/meme junk as adverse theme examples.
+  if (ADVERSE_THEME_IDS.has(theme.themeId)) {
+    const gate = itemAdverseExampleEligibility(
+      item,
+      theme,
+      isWeakExampleTitle(String(item.title ?? ""), { theme })
+    );
+    if (!gate.eligibleAsAdverseExample) return null;
+  }
   const domain = domainOf(item.sourceUrl);
   const title = cleanExampleTitle(String(item.title ?? ""));
   const rawTitle = String(item.title ?? "");

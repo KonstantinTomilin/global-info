@@ -68,6 +68,11 @@ import { runSourceContentAcquisition } from "../content-acquisition/run-source-c
 import type { SourceContentIndex } from "../contracts/source-content-index";
 import { runGroundedItemAnalyst } from "../grounded-item-analyst/run-grounded-item-analyst";
 import type { ItemAnalysisBundle } from "../contracts/item-analysis";
+import { buildCanonicalClaims } from "./canonical-claim-builder";
+import type { CanonicalClaimBundle } from "../contracts/canonical-claim";
+import { buildEvidenceQualityDisposition } from "./evidence-quality-gate";
+import { getFindingThemes } from "../../config/finding-themes";
+import { isWeakExampleTitle } from "./finding-synthesizer";
 
 export type AnalyticsPipelineInput = {
   caseId: string;
@@ -114,6 +119,8 @@ export type AnalyticsPipelineResult = {
   sourceContentIndex: SourceContentIndex;
   /** C2 — grounded per-item analyses (always non-empty for selected sources). */
   itemAnalysisBundle: ItemAnalysisBundle;
+  /** C3 — canonical claims carrying grounded ItemAnalysis fields. */
+  canonicalClaims: CanonicalClaimBundle;
   artifactPaths: Record<string, string>;
 };
 
@@ -629,6 +636,55 @@ export async function runOrionAnalyticsPipeline(
   emit("grounding-report.json", itemAnalysisBundle.groundingReport);
   emit("fallback-report.json", itemAnalysisBundle.fallbackReport);
 
+  // C3 — CanonicalClaim carries grounded ItemAnalysis (displayExcerpt unsliced).
+  const canonicalClaims = buildCanonicalClaims({
+    caseId: input.caseId,
+    datasetId,
+    itemAnalysis: itemAnalysisBundle,
+    findings: synthesis.bundle.findings,
+    sourceContent: sourceContentIndex,
+  });
+  if (canonicalClaims.gates.SEMANTIC_EXCERPT_TRUNCATIONS !== 0) {
+    throw new Error("SEMANTIC_EXCERPT_TRUNCATIONS != 0");
+  }
+  if (canonicalClaims.gates.ADVERSE_GROUNDED_COVERAGE < 1) {
+    throw new Error(
+      `adverse CanonicalClaims missing grounded description: ${canonicalClaims.gates.adverseWithGroundedDescription}/${canonicalClaims.gates.adverseClaims}`
+    );
+  }
+  emit("canonical-claims.json", canonicalClaims);
+
+  // C4 — evidence-quality disposition (junk → appendix with trace, never silent drop).
+  const themesById = new Map(getFindingThemes().map((t) => [t.themeId, t]));
+  const qualityItems = sourceContentIndex.entries.map((e) => {
+    const item = input.items.find((i) => i.inventoryId === e.inventoryId);
+    const themeId = canonicalClaims.claims.find((c) => c.inventoryId === e.inventoryId)?.theme;
+    const theme = themeId ? themesById.get(themeId) : undefined;
+    return {
+      inventoryId: e.inventoryId,
+      title: e.extractedTitle ?? item?.title ?? e.url,
+      url: e.url,
+      contentSource: e.contentSource,
+      notEligibleAsAdverseExample: e.notEligibleAsAdverseExample,
+      themeId,
+      theme,
+      weakTitle: isWeakExampleTitle(e.extractedTitle ?? item?.title ?? "", {
+        theme,
+      }),
+    };
+  });
+  const evidenceQualityDisposition = buildEvidenceQualityDisposition({
+    caseId: input.caseId,
+    datasetId,
+    items: qualityItems,
+  });
+  if (evidenceQualityDisposition.gates.JUNK_AS_ADVERSE_EXAMPLE !== 0) {
+    throw new Error(
+      `JUNK_AS_ADVERSE_EXAMPLE=${evidenceQualityDisposition.gates.JUNK_AS_ADVERSE_EXAMPLE}`
+    );
+  }
+  emit("evidence-quality-disposition.json", evidenceQualityDisposition);
+
   return {
     reconciliation,
     composite,
@@ -641,6 +697,7 @@ export async function runOrionAnalyticsPipeline(
     reportDataBinding,
     sourceContentIndex,
     itemAnalysisBundle,
+    canonicalClaims,
     artifactPaths,
   };
 }
