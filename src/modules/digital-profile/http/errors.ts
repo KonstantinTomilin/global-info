@@ -143,6 +143,22 @@ export function normalizeError(err: unknown): AppError {
             : "Case artifacts not found"
       );
     }
+    // Arsenkin live-auth / unified lease races must not surface as opaque 500
+    // (Suggestions targeted retry while a tick holds auth/lease).
+    if (
+      msg === "live-authorization-already-active" ||
+      msg === "live-authorization-requires-liveConfirmed" ||
+      msg === "arsenkin-poll-auth-already-active" ||
+      msg.startsWith("arsenkin-live-set-blocked:") ||
+      msg.startsWith("arsenkin-live-network-blocked:") ||
+      msg.startsWith("arsenkin-poll-auth-blocked:") ||
+      msg.startsWith("live-authorization-blocked:") ||
+      msg.startsWith("unified-collection-job CAS failed") ||
+      msg.startsWith("SUGGEST_QUERY_") ||
+      msg.startsWith("SUGGEST_QUERIES_")
+    ) {
+      return new ConflictError(msg.slice(0, 220));
+    }
   }
 
   // Unexpected: log server-side, return generic message.

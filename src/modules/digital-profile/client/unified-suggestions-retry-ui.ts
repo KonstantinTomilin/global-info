@@ -25,7 +25,10 @@ export function isSuggestionsTargetedRetryState(
 export function shouldShowGeneralRecoveryCta(
   job: SuggestionsRetryJobFields | null | undefined
 ): boolean {
-  return Boolean(job?.recoveryAllowed) && !isSuggestionsTargetedRetryState(job);
+  // Keep «Продолжить импорт Arsenkin» visible even when Suggestions retry is
+  // offered — otherwise a failed Suggestions POST leaves the operator with no
+  // recovery path while recoveryAllowed is still true.
+  return Boolean(job?.recoveryAllowed);
 }
 
 export function shouldBlockFullAuditCta(

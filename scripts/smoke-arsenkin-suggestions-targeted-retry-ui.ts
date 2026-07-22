@@ -161,7 +161,7 @@ describe("C — UI CTA priority + i18n", () => {
   const agents = read("src/modules/digital-profile/client/AgentsTab.tsx");
   const tabs = read("src/modules/digital-profile/client/CaseTabs.tsx");
 
-  it("gap job shows only targeted CTA; recovery/full audit hidden", () => {
+  it("gap job shows targeted CTA and keeps general recovery when allowed", () => {
     const gapJob = {
       jobId: "unified-smoke-suggestions-retry-ui",
       suggestionsRetryAllowed: true,
@@ -171,7 +171,7 @@ describe("C — UI CTA priority + i18n", () => {
       fullAuditBlocked: true,
     };
     assert.equal(isSuggestionsTargetedRetryState(gapJob), true);
-    assert.equal(shouldShowGeneralRecoveryCta(gapJob), false);
+    assert.equal(shouldShowGeneralRecoveryCta(gapJob), true);
     assert.equal(shouldBlockFullAuditCta(gapJob), true);
 
     assert.match(header, /shouldShowGeneralRecoveryCta/);

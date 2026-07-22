@@ -75,6 +75,10 @@ export async function withLiveAuthorization<T>(
   if (active) {
     throw new Error("live-authorization-already-active");
   }
+  // Do not nest a paid /set session inside an in-flight poll scope on this isolate.
+  if (activePoll) {
+    throw new Error("live-authorization-blocked:poll-session-active");
+  }
   active = {
     auth,
     budget: { createdNewTasks: 0, estimatedLimitsSpent: 0, countedRequestHashes: [] },

@@ -378,18 +378,72 @@ export async function retryUnifiedEnrichmentSuggestionsTask(input: {
   if (!claimed) throw new ConflictError("ACTIVE_LEASE");
 
   try {
-    const tasks =
-      (await input.deps?.listProviderTasks?.(enrichmentRunId)) ??
-      (await defaultListProviderTasks(enrichmentRunId));
+    return await executeTargetedSuggestionsRetryBody({
+      input,
+      job,
+      jobId,
+      enrichmentRunId,
+      agentName,
+      prepared,
+    });
+  } catch (err) {
+    if (
+      err instanceof ConflictError ||
+      err instanceof ValidationError ||
+      err instanceof NotFoundError
+    ) {
+      throw err;
+    }
+    if (err instanceof Error) {
+      const msg = err.message;
+      if (
+        /live-authorization|arsenkin-live-|arsenkin-poll-auth|unified-collection-job CAS failed|SUGGEST_/i.test(
+          msg
+        )
+      ) {
+        throw new ConflictError(msg.slice(0, 220));
+      }
+    }
+    throw err;
+  } finally {
+    await releaseUnifiedJobLease(input.caseId, ownerId);
+  }
+}
 
-    const suggestTasks = tasks.filter((t) => /suggest/i.test(String(t.toolName ?? "")));
-    const reusable = suggestTasks.find(
-      (t) =>
-        Boolean(t.externalTaskId) ||
-        String(t.state).toUpperCase() === "DONE" ||
-        isIngestibleResponse(t.responseJson)
-    );
-    if (reusable?.externalTaskId) {
+async function executeTargetedSuggestionsRetryBody(args: {
+  input: {
+    caseId: string;
+    jobId: string;
+    enrichmentRunId: string;
+    agentName: string;
+    expectedTaskFingerprint?: string | null;
+    confirmPaidEnrichmentRetry: boolean;
+    actorId: string;
+    deps?: TargetedEnrichmentRetryDeps;
+  };
+  job: UnifiedCollectionJob;
+  jobId: string;
+  enrichmentRunId: string;
+  agentName: "ARSENKIN_SUGGESTIONS_REAL";
+  prepared: {
+    requestJson: { tools_name: string; data: Record<string, unknown> };
+    selection: SuggestQuerySelection;
+    requestHash: string;
+  } | null;
+}): Promise<TargetedEnrichmentRetryResult> {
+  const { input, job, jobId, enrichmentRunId, agentName, prepared } = args;
+  const tasks =
+    (await input.deps?.listProviderTasks?.(enrichmentRunId)) ??
+    (await defaultListProviderTasks(enrichmentRunId));
+
+  const suggestTasks = tasks.filter((t) => /suggest/i.test(String(t.toolName ?? "")));
+  const reusable = suggestTasks.find(
+    (t) =>
+      Boolean(t.externalTaskId) ||
+      String(t.state).toUpperCase() === "DONE" ||
+      isIngestibleResponse(t.responseJson)
+  );
+  if (reusable?.externalTaskId) {
       await writeUnifiedArtifact(input.caseId, job.unifiedJobId, "enrichment-targeted-retry-audit.json", {
         version: "enrichment-targeted-retry-audit-v1",
         at: (input.deps?.now ?? (() => new Date()))().toISOString(),
@@ -597,27 +651,24 @@ export async function retryUnifiedEnrichmentSuggestionsTask(input: {
     // Durable continuation: poll existing externalTaskId → ingest → composite…
     schedulePostSubmitUnifiedTick(input.caseId, input.deps);
 
-    return {
-      accepted: true,
-      jobId: job.jobId,
-      unifiedJobId: job.unifiedJobId,
-      enrichmentRunId,
-      agentName,
-      externalTaskId,
-      providerTaskId: submitted.providerTaskId,
-      requestHash,
-      submissions: 1,
-      reusedExisting: false,
-      reusedNoExternalRequestTask,
-      reusedRejectedSuggestTask,
-      selection,
-      stage: "ARSENKIN_ENRICHMENT",
-      status: "WAITING",
-      resumeCheckpoint: "ARSENKIN_RESULT_INGEST",
-    };
-  } finally {
-    await releaseUnifiedJobLease(input.caseId, ownerId);
-  }
+  return {
+    accepted: true,
+    jobId: job.jobId,
+    unifiedJobId: job.unifiedJobId,
+    enrichmentRunId,
+    agentName,
+    externalTaskId,
+    providerTaskId: submitted.providerTaskId,
+    requestHash,
+    submissions: 1,
+    reusedExisting: false,
+    reusedNoExternalRequestTask,
+    reusedRejectedSuggestTask,
+    selection,
+    stage: "ARSENKIN_ENRICHMENT",
+    status: "WAITING",
+    resumeCheckpoint: "ARSENKIN_RESULT_INGEST",
+  };
 }
 
 async function defaultSubmitSuggestTask(input: {

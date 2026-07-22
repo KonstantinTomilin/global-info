@@ -313,9 +313,9 @@ export function CaseHeader({
           ) : null}
           {can("agents.run") && showGeneralRecovery ? (
             <button
-              className="dp-btn dp-btn-primary"
+              className={suggestionsRetry ? "dp-btn" : "dp-btn dp-btn-primary"}
               onClick={onRecoverUnifiedCollection}
-              disabled={recovering || generating || suggestionsRetry}
+              disabled={recovering || generating}
               title={
                 renderRecovery
                   ? "Продолжить с этапа рендера без повторного сбора"
