@@ -15,9 +15,11 @@ import {
   ADVERSE_THEME_IDS,
   resolveThemeRef,
 } from "./canonical-claim-builder";
-import { hasDanglingTail } from "./finding-synthesizer";
+import { countIncompleteSentences } from "./incomplete-client-sentences";
 import { matchInternalClientToken } from "../client/load-client-text-contract";
 import { scanOrionGoldenClientTextForForbiddenTokens } from "../client/client-text-sanitizer";
+
+export { countIncompleteSentences } from "./incomplete-client-sentences";
 
 /** Database / watchlist themes — kept as a separate client block from media. */
 export const DATABASE_THEME_IDS = new Set(["pep_rca_watchlist"]);
@@ -56,52 +58,6 @@ function countTechnicalTokens(text: string): number {
   if (/\bfinding-[a-z0-9-]+\b/i.test(text)) n += 1;
   if (/\binventory:[a-z0-9-]+\b/i.test(text)) n += 1;
   if (/\b(P1|P2|P3|APPENDIX|SUBJECT_MATCH)\b/.test(text)) n += 1;
-  return n;
-}
-
-/**
- * Detect real mid-cuts in composed prose.
- * Do NOT reuse isIncompleteClientQuote (SERP titles): it flags length under 12
- * and false-splits on «см.» / «т.д.» / initials, which blew
- * SUMMARY_INCOMPLETE_SENTENCES on live Deripaska (CANONICAL_PREPARE_FAILED).
- */
-export function countIncompleteSentences(text: string): number {
-  const normalized = String(text ?? "").replace(/\s+/gu, " ").trim();
-  if (!normalized) return 0;
-
-  // Avoid splitting on common abbreviations / initials («см. », «т. д. », «О. »).
-  const protectedText = normalized
-    .replace(/\b(см|См|т|д|п|др|ул|г|гг|проф|ст|ед|им)\./gu, "$1·")
-    .replace(/\b([A-ZА-ЯЁ])\.(?=\s+[A-ZА-ЯЁa-zа-яё])/gu, "$1·");
-
-  const parts = protectedText
-    .split(/(?<=[.!?…])\s+/u)
-    .map((s) => s.replace(/·/gu, ".").trim())
-    .filter(Boolean);
-
-  let n = 0;
-  for (const p of parts) {
-    // Labels like «Источник:» mid-paragraph are OK; trailing cut markers are not.
-    if (/[,;]$/u.test(p)) {
-      n += 1;
-      continue;
-    }
-    if (/(?:\.\.\.|…)$/u.test(p) && p.length > 20) {
-      n += 1;
-      continue;
-    }
-    if (hasDanglingTail(p)) {
-      n += 1;
-      continue;
-    }
-    if (/\([^)]*$/u.test(p)) {
-      n += 1;
-      continue;
-    }
-    if (((p.match(/"/g) ?? []).length) % 2 === 1) {
-      n += 1;
-    }
-  }
   return n;
 }
 

@@ -69,6 +69,16 @@ describe("C1 extract-article", () => {
     const hash = createHash("sha256").update(extracted!.extractedText, "utf8").digest("hex");
     expect(extracted!.contentHash).toBe(hash);
   });
+
+  it("never throws into prepare on empty / garbage HTML", () => {
+    expect(extractArticleFromHtml({ html: "", url: "https://x.example" })).toBeNull();
+    expect(
+      extractArticleFromHtml({ html: "<html><body></body></html>", url: "https://x.example" })
+    ).toBeNull();
+    expect(() =>
+      extractArticleFromHtml({ html: "<not-html", url: "https://x.example" })
+    ).not.toThrow();
+  });
 });
 
 describe("C1 url policy", () => {

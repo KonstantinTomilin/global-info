@@ -13,7 +13,7 @@ import {
   assertContentQualityGatesPass,
 } from "../contracts/content-quality-report";
 import { resolveThemeRef } from "../analytics/canonical-claim-builder";
-import { countIncompleteSentences } from "../analytics/client-summary-composer";
+import { countIncompleteSentences } from "../analytics/incomplete-client-sentences";
 import { matchInternalClientToken } from "../client/load-client-text-contract";
 import { scanOrionGoldenClientTextForForbiddenTokens } from "../client/client-text-sanitizer";
 import {

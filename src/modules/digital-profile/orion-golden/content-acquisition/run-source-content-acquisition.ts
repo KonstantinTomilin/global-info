@@ -188,11 +188,16 @@ export async function runSourceContentAcquisition(
       continue;
     }
 
-    const extracted = extractArticleFromHtml({
-      html: fetched.html,
-      url: sel.url,
-      fallbackTitle: sel.title,
-    });
+    let extracted: ReturnType<typeof extractArticleFromHtml> = null;
+    try {
+      extracted = extractArticleFromHtml({
+        html: fetched.html,
+        url: sel.url,
+        fallbackTitle: sel.title,
+      });
+    } catch {
+      extracted = null;
+    }
     if (!extracted) {
       const entry = snippetEntry({
         ...sel,
