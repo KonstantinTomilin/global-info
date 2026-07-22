@@ -13,7 +13,7 @@ import {
   assertContentQualityGatesPass,
 } from "../contracts/content-quality-report";
 import { resolveThemeRef } from "../analytics/canonical-claim-builder";
-import { hasDanglingTail, isIncompleteClientQuote } from "../analytics/finding-synthesizer";
+import { countIncompleteSentences } from "../analytics/client-summary-composer";
 import { matchInternalClientToken } from "../client/load-client-text-contract";
 import { scanOrionGoldenClientTextForForbiddenTokens } from "../client/client-text-sanitizer";
 import {
@@ -87,18 +87,6 @@ function countTechnicalTokens(text: string): number {
   if (/\bfinding-[a-z0-9-]+\b/i.test(text)) n += 1;
   if (/\binventory:[a-z0-9-]+\b/i.test(text)) n += 1;
   if (/\b(P1|P2|P3|APPENDIX|SUBJECT_MATCH)\b/.test(text)) n += 1;
-  return n;
-}
-
-function countIncompleteSentences(text: string): number {
-  const parts = text
-    .split(/(?<=[.!?…])\s+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  let n = 0;
-  for (const p of parts) {
-    if (hasDanglingTail(p) || isIncompleteClientQuote(p) || /[,;:]$/u.test(p)) n += 1;
-  }
   return n;
 }
 

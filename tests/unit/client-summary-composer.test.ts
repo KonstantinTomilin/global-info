@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertComposedSummaryGatesPass,
   composeClientSummary,
+  countIncompleteSentences,
   themeBlockToClaimText,
 } from "../../src/modules/digital-profile/orion-golden/analytics/client-summary-composer";
 import type { CanonicalClaimBundle } from "../../src/modules/digital-profile/orion-golden/contracts/canonical-claim";
@@ -206,5 +207,18 @@ describe("C5 client-summary-composer", () => {
     ]);
     expect(summary.gates.SUMMARY_MATERIAL_THEME_COVERAGE).toBe(1);
     assertComposedSummaryGatesPass(summary);
+  });
+
+  it("does not flag abbreviation splits (см. / т.д.) as incomplete sentences", () => {
+    expect(
+      countIncompleteSentences(
+        "В материале см. первоисточник и т. д. Требуется проверка первичных документов."
+      )
+    ).toBe(0);
+    expect(
+      countIncompleteSentences(
+        "После публикации расследования ФБК об отдыхе Дерипаски,"
+      )
+    ).toBeGreaterThanOrEqual(1);
   });
 });

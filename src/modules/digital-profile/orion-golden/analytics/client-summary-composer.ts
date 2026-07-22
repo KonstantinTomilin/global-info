@@ -15,7 +15,7 @@ import {
   ADVERSE_THEME_IDS,
   resolveThemeRef,
 } from "./canonical-claim-builder";
-import { hasDanglingTail, isIncompleteClientQuote } from "./finding-synthesizer";
+import { hasDanglingTail } from "./finding-synthesizer";
 import { matchInternalClientToken } from "../client/load-client-text-contract";
 import { scanOrionGoldenClientTextForForbiddenTokens } from "../client/client-text-sanitizer";
 
@@ -41,6 +41,14 @@ function isDatabaseTheme(themeId: string, themeLabel: string): boolean {
   );
 }
 
+function ensureTerminalSentence(text: string): string {
+  const t = String(text ?? "").replace(/\s+/gu, " ").trim();
+  if (!t) return t;
+  if (/[.!?…]$/u.test(t)) return t;
+  if (/[»"”']$/u.test(t)) return `${t}.`;
+  return `${t}.`;
+}
+
 function countTechnicalTokens(text: string): number {
   let n = 0;
   if (matchInternalClientToken(text)) n += 1;
@@ -51,14 +59,48 @@ function countTechnicalTokens(text: string): number {
   return n;
 }
 
-function countIncompleteSentences(text: string): number {
-  const parts = text
-    .split(/(?<=[.!?…])\s+/)
-    .map((s) => s.trim())
+/**
+ * Detect real mid-cuts in composed prose.
+ * Do NOT reuse isIncompleteClientQuote (SERP titles): it flags length under 12
+ * and false-splits on «см.» / «т.д.» / initials, which blew
+ * SUMMARY_INCOMPLETE_SENTENCES on live Deripaska (CANONICAL_PREPARE_FAILED).
+ */
+export function countIncompleteSentences(text: string): number {
+  const normalized = String(text ?? "").replace(/\s+/gu, " ").trim();
+  if (!normalized) return 0;
+
+  // Avoid splitting on common abbreviations / initials («см. », «т. д. », «О. »).
+  const protectedText = normalized
+    .replace(/\b(см|См|т|д|п|др|ул|г|гг|проф|ст|ед|им)\./gu, "$1·")
+    .replace(/\b([A-ZА-ЯЁ])\.(?=\s+[A-ZА-ЯЁa-zа-яё])/gu, "$1·");
+
+  const parts = protectedText
+    .split(/(?<=[.!?…])\s+/u)
+    .map((s) => s.replace(/·/gu, ".").trim())
     .filter(Boolean);
+
   let n = 0;
   for (const p of parts) {
-    if (hasDanglingTail(p) || isIncompleteClientQuote(p) || /[,;:]$/u.test(p)) n += 1;
+    // Labels like «Источник:» mid-paragraph are OK; trailing cut markers are not.
+    if (/[,;]$/u.test(p)) {
+      n += 1;
+      continue;
+    }
+    if (/(?:\.\.\.|…)$/u.test(p) && p.length > 20) {
+      n += 1;
+      continue;
+    }
+    if (hasDanglingTail(p)) {
+      n += 1;
+      continue;
+    }
+    if (/\([^)]*$/u.test(p)) {
+      n += 1;
+      continue;
+    }
+    if (((p.match(/"/g) ?? []).length) % 2 === 1) {
+      n += 1;
+    }
   }
   return n;
 }
@@ -68,21 +110,31 @@ function buildArticle(claim: CanonicalClaim): ComposedThemeArticle {
   const attribution =
     claim.attribution?.trim() ||
     (claim.claimKind === "SOURCE_ALLEGATION" ? "сообщается" : null);
-  const lead = attribution
-    ? `В материале ${domain} ${attribution.includes("сообщ") ? "сообщается" : "утверждается"}:`
-    : `В материале ${domain}:`;
+  const verb = attribution
+    ? attribution.includes("сообщ")
+      ? "сообщается"
+      : "утверждается"
+    : null;
+  // Em dash — not bare «:» — so a mid-cut detector never sees a colon-only stump.
+  const lead = verb
+    ? `В материале ${domain} ${verb}`
+    : `В материале ${domain}`;
+  const description = ensureTerminalSentence(claim.clientDescription);
+  const qualification = ensureTerminalSentence(claim.qualification);
   const body = [
-    `${lead} ${claim.clientDescription.trim()}`,
-    `Источник: ${domain}. ${claim.qualification.trim()}`,
+    `${lead} — ${description}`,
+    `Источник: ${domain}. ${qualification}`,
   ].join("\n\n");
 
   return {
     evidenceRef: claim.evidenceRefs[0]!,
     domain,
     body,
-    whyItMatters: claim.whyItMatters.trim(),
-    qualification: claim.qualification.trim(),
-    recommendedChecks: claim.recommendedChecks,
+    whyItMatters: ensureTerminalSentence(claim.whyItMatters),
+    qualification,
+    recommendedChecks: claim.recommendedChecks
+      .map((c) => ensureTerminalSentence(c))
+      .filter(Boolean),
     claimId: claim.claimId,
   };
 }
@@ -90,7 +142,7 @@ function buildArticle(claim: CanonicalClaim): ComposedThemeArticle {
 function synthesizeThemeWhy(articles: ComposedThemeArticle[]): string {
   const uniq: string[] = [];
   for (const a of articles) {
-    const w = a.whyItMatters.trim();
+    const w = ensureTerminalSentence(a.whyItMatters);
     if (!w) continue;
     if (uniq.some((u) => u === w)) continue;
     uniq.push(w);
