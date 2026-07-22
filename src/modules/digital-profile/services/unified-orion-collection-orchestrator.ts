@@ -788,6 +788,28 @@ async function stepArsenkin(
   if (resumeIngest) {
     const attempt = Math.max(0, Number(job.pollAttempt ?? 0)) + 1;
     if (attempt > MAX_ARSENKIN_INGEST_POLL_ATTEMPTS) {
+      const pendingAgents = job.arsenkinEnrichmentState?.pendingAgents ?? [];
+      const suggestionsOnlyPending =
+        pendingAgents.length >= 1 &&
+        pendingAgents.every((a) => /SUGGESTIONS/i.test(String(a))) &&
+        !(job.arsenkinEnrichmentState?.ingestedAgents ?? []).some((a) =>
+          /SUGGESTIONS/i.test(String(a))
+        );
+      // Prefer a Suggestions-specific code so the UI offers targeted /set retry
+      // instead of only «Продолжить импорт» (which cannot create a missing task).
+      if (suggestionsOnlyPending) {
+        return await failRetryable(
+          job,
+          "SUGGESTIONS_RESULT_MISSING",
+          "Suggestions не получили результат Arsenkin после 40 poll-попыток. «Продолжить импорт» не создаёт /set — нажмите «Повторить только задачу Suggestions».",
+          [
+            "ARSENKIN_RESULT_INGEST",
+            `pollAttempt:${attempt}`,
+            "SUGGESTIONS_STALL",
+            "ARSENKIN_POLL_ATTEMPTS_EXCEEDED",
+          ]
+        );
+      }
       return await failRetryable(
         job,
         "ARSENKIN_POLL_ATTEMPTS_EXCEEDED",

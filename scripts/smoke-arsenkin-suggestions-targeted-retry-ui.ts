@@ -244,6 +244,70 @@ describe("C — UI CTA priority + i18n", () => {
     assert.equal(gap.suggestionsMissingResult, true);
     assert.equal(gap.suggestionsRetryAllowed, true);
   });
+
+  it("poll ceiling with Suggestions pending surfaces targeted retry CTA", () => {
+    const gap = withSuggestionsGapStatus(
+      {
+        version: "unified-orion-collection-job-v1",
+        caseId: "c",
+        jobId: "j",
+        unifiedJobId: "j",
+        stage: "FAILED_RETRYABLE",
+        status: "FAILED",
+        progress: 0,
+        actualProviders: [],
+        coverage: { regions: [], engines: [], surfaceTypes: [] },
+        warnings: ["arsenkin-scheduled:ARSENKIN_SUGGESTIONS_REAL"],
+        lastError: "Arsenkin durable poll exceeded 40 attempts",
+        lastErrorCode: "ARSENKIN_POLL_ATTEMPTS_EXCEEDED",
+        baseReportRunId: "base",
+        arsenkinReportRunId: null,
+        enrichmentRunIds: [
+          "enrichment-run-a",
+          "enrichment-run-arsenkin-suggestions-real",
+          "enrichment-run-c",
+          "enrichment-run-d",
+          "enrichment-run-e",
+        ],
+        compositeDatasetId: null,
+        reportLinks: {},
+        artifactPaths: {},
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        completedAt: null,
+        pollAttempt: 40,
+        arsenkinEnrichmentState: {
+          scheduledAgents: [
+            "ARSENKIN_SEARCH_TOP_REAL",
+            "ARSENKIN_SUGGESTIONS_REAL",
+            "ARSENKIN_PAA_REAL",
+            "ARSENKIN_AI_SEARCH_REAL",
+            "ARSENKIN_URL_AUDIT_REAL",
+          ],
+          completedAgents: [
+            "ARSENKIN_SEARCH_TOP_REAL",
+            "ARSENKIN_PAA_REAL",
+            "ARSENKIN_AI_SEARCH_REAL",
+            "ARSENKIN_URL_AUDIT_REAL",
+          ],
+          failedAgents: [],
+          pendingAgents: ["ARSENKIN_SUGGESTIONS_REAL"],
+          ingestedAgents: [
+            "ARSENKIN_SEARCH_TOP_REAL",
+            "ARSENKIN_PAA_REAL",
+            "ARSENKIN_AI_SEARCH_REAL",
+            "ARSENKIN_URL_AUDIT_REAL",
+          ],
+          enrichmentObservationCount: 100,
+          enrichmentComplete: false,
+        },
+      } as never,
+      // Empty suggest rows = nothing to poll; Continue import alone cannot fix this.
+      []
+    );
+    assert.equal(gap.suggestionsMissingResult, true);
+    assert.equal(gap.suggestionsRetryAllowed, true);
+  });
 });
 
 describe("D — server contract source + flags", () => {

@@ -129,6 +129,35 @@ export function withSuggestionsGapStatus(
     };
   }
 
+  const pollCeiling =
+    /ARSENKIN_POLL_ATTEMPTS_EXCEEDED|SUGGESTIONS_RESULT_MISSING/i.test(
+      String(job.lastErrorCode ?? "")
+    ) ||
+    /durable poll exceeded|Suggestions не получили результат/i.test(
+      String(job.lastError ?? "")
+    );
+  const suggestionsStillPending =
+    scheduledSuggest &&
+    enrichmentIncomplete &&
+    !suggestionsIngested(job) &&
+    (stateFailed ||
+      Boolean(job.arsenkinEnrichmentState?.pendingAgents?.some((a) => /SUGGESTIONS/i.test(a))));
+
+  // After the 40-attempt ceiling the job is FAILED_RETRYABLE — operators often only
+  // see «Продолжить импорт», which cannot create a missing /set. Surface targeted
+  // Suggestions retry whenever Suggestions is still pending and not pollable.
+  if (pollCeiling && suggestionsStillPending && !hasDoneWithExt && !pollableWithExt) {
+    return {
+      suggestionsMissingResult: true,
+      suggestionsFailureReason: safeReason(
+        rejected?.errorCode ?? job.lastErrorCode ?? "SUGGESTIONS_RESULT_MISSING"
+      ),
+      suggestionsRetryAllowed: true,
+      suggestionsEnrichmentRunId: enrichmentRunId,
+      suggestionsAgentName: "ARSENKIN_SUGGESTIONS_REAL",
+    };
+  }
+
   // Empty ProviderTask rows for a suggestions enrichment run still mean a gap
   // (failed load path returns undefined, not []).
   const missingFromTasks =
@@ -141,7 +170,8 @@ export function withSuggestionsGapStatus(
 
   // When tasks could not be loaded, infer gap from job signals — including a
   // scheduled Suggestions agent that never completed (Job B incident pattern).
-  // Do not treat durable ingest progress as a gap when pollAttempt/nextPollAt exist.
+  // Do not treat durable ingest progress as a gap when pollAttempt/nextPollAt exist
+  // — except after poll ceiling (handled above).
   const ingestProgressVisible =
     durableIngestActive &&
     (Number(job.pollAttempt ?? 0) > 0 || Boolean(job.nextPollAt));
