@@ -408,14 +408,35 @@ export async function recoverUnifiedOrionCollectionJob(input: {
       (job0.enrichmentRunIds?.length ?? 0) >= 5 &&
       ACTIVE_STAGES.has(job0.stage))
   ) {
+    const renderish =
+      elig.recoveryReason === "IDEMPOTENT_RENDER_RESUME" ||
+      job0.stage === "ORION_PREPARE" ||
+      job0.stage === "CLIENT_CONTENT" ||
+      job0.resumeCheckpoint === "RENDER" ||
+      job0.resumeCheckpoint === "GPT_COPY";
+    let next = job0;
+    // Flip WAITING → RUNNING so Continue shows real work and the pump can
+    // re-enter prepare (idle ORION_PREPARE/WAITING is no longer auto-pumped).
+    if (renderish && job0.status !== "RUNNING") {
+      next =
+        (await patchUnifiedCollectionJob(input.caseId, {
+          status: "RUNNING",
+          stage: job0.stage === "CLIENT_CONTENT" ? "CLIENT_CONTENT" : "ORION_PREPARE",
+          resumeCheckpoint:
+            job0.resumeCheckpoint === "GPT_COPY" ? "GPT_COPY" : "RENDER",
+          lastError: null,
+          lastErrorCode: null,
+          completedAt: null,
+        })) ?? job0;
+    }
     await scheduleRecoverTick(input.caseId, input.deps);
     return {
       accepted: true,
-      jobId: job0.jobId,
-      unifiedJobId: job0.unifiedJobId,
-      stage: job0.stage,
-      status: job0.status,
-      baseReportRunId: String(job0.baseReportRunId),
+      jobId: next.jobId,
+      unifiedJobId: next.unifiedJobId,
+      stage: next.stage,
+      status: next.status,
+      baseReportRunId: String(next.baseReportRunId),
       recoveryReason: elig.recoveryReason ?? "IDEMPOTENT_RESUME",
       createdBaseReportRun: false,
       idempotent: true,

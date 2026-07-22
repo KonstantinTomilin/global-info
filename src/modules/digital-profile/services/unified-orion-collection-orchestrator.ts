@@ -161,6 +161,16 @@ export async function persistUnifiedTickFailure(
   const nowMs = (extras?.now ?? new Date()).getTime();
   const backoffMs = Math.min(30_000, Math.max(2_000, 2_000 * 2 ** Math.min(attempt, 4)));
   const nextPollAt = new Date(nowMs + backoffMs).toISOString();
+  // Prepare/render ticks must not be rewritten into Arsenkin ingest (that caused
+  // silent stage demotion + endless pump with no visible work).
+  if (job.stage === "ORION_PREPARE" || job.stage === "CLIENT_CONTENT") {
+    return await failRetryable(
+      job,
+      errorCode === "UNIFIED_TICK_FAILED" ? "ORION_PREPARE_TICK_FAILED" : errorCode,
+      message.slice(0, 500),
+      [`unified-tick-error:${errorCode}`, job.stage, job.resumeCheckpoint ?? ""]
+    );
+  }
   if (attempt >= MAX_ARSENKIN_INGEST_POLL_ATTEMPTS) {
     return await failRetryable(
       job,
@@ -537,8 +547,9 @@ export async function startUnifiedOrionCollection(input: {
 
 const ticking = new Set<string>();
 
-export function scheduleUnifiedTick(caseId: string, deps: UnifiedOrchestratorDeps = {}): void {
-  if (ticking.has(caseId)) return;
+/** @returns false when a tick is already in-flight for this case (in-process). */
+export function scheduleUnifiedTick(caseId: string, deps: UnifiedOrchestratorDeps = {}): boolean {
+  if (ticking.has(caseId)) return false;
   ticking.add(caseId);
   setImmediate(() => {
     void runUnifiedCollectionTick(caseId, deps)
@@ -566,6 +577,7 @@ export function scheduleUnifiedTick(caseId: string, deps: UnifiedOrchestratorDep
         }
       });
   });
+  return true;
 }
 
 /** Bounded resume after deploy — only active/retryable jobs. */
@@ -576,15 +588,31 @@ export async function resumeUnifiedCollectionsOnStartup(deps: UnifiedOrchestrato
 }
 
 /**
- * Periodic pump for persisted WAITING unified jobs (durable across HTTP end).
- * Idempotent with scheduleUnifiedTick's in-process guard + job lease.
+ * Periodic pump for durable work (Arsenkin ingest + in-flight prepare/render).
+ * Idle ORION_PREPARE/WAITING is NOT pumped — that needs explicit Continue
+ * (avoids 5s log spam with no lease/work).
  */
 export async function pumpResumableUnifiedCollections(deps: UnifiedOrchestratorDeps = {}): Promise<number> {
   const jobs = await listResumableUnifiedJobs();
+  let scheduled = 0;
   for (const { caseId } of jobs) {
-    scheduleUnifiedTick(caseId, deps);
+    const job = await loadUnifiedCollectionJob(caseId);
+    if (!job) continue;
+    const arsenkinIngest =
+      job.stage === "ARSENKIN_ENRICHMENT" &&
+      (job.status === "WAITING" || job.status === "RUNNING") &&
+      job.resumeCheckpoint === "ARSENKIN_RESULT_INGEST";
+    const prepareInFlight =
+      (job.stage === "ORION_PREPARE" || job.stage === "CLIENT_CONTENT") &&
+      job.status === "RUNNING";
+    const earlyPipeline =
+      job.stage === "BASE_COLLECTION" || job.stage === "COMPOSITE_MERGE";
+    if (!arsenkinIngest && !prepareInFlight && !earlyPipeline) {
+      continue;
+    }
+    if (scheduleUnifiedTick(caseId, deps)) scheduled += 1;
   }
-  return jobs.length;
+  return scheduled;
 }
 
 export async function runUnifiedCollectionTick(
@@ -593,7 +621,16 @@ export async function runUnifiedCollectionTick(
 ): Promise<UnifiedCollectionJob | null> {
   const ownerId = `unified-${process.pid}-${randomUUID().slice(0, 6)}`;
   const claimed = await claimUnifiedJobLease({ caseId, ownerId, leaseMs: 120_000, now: deps.now?.() });
-  if (!claimed) return await loadUnifiedCollectionJob(caseId);
+  if (!claimed) {
+    console.error(
+      JSON.stringify({
+        event: "unified_tick_lease_miss",
+        caseId,
+        ownerId,
+      })
+    );
+    return await loadUnifiedCollectionJob(caseId);
+  }
 
   try {
     let job = claimed;
@@ -1204,6 +1241,19 @@ async function stepPrepare(
   job: UnifiedCollectionJob,
   deps: UnifiedOrchestratorDeps
 ): Promise<UnifiedCollectionJob> {
+  // Make progress visible in UI (Continue used to leave WAITING forever).
+  if (job.status !== "RUNNING") {
+    job =
+      (await patchUnifiedCollectionJob(job.caseId, {
+        status: "RUNNING",
+        stage: job.stage === "CLIENT_CONTENT" ? "CLIENT_CONTENT" : "ORION_PREPARE",
+        progress: stageProgress("ORION_PREPARE"),
+        lastError: null,
+        lastErrorCode: null,
+        completedAt: null,
+      })) ?? job;
+  }
+
   const manifest = await readUnifiedArtifact<BaseCollectionManifest>(
     job.caseId,
     job.unifiedJobId,

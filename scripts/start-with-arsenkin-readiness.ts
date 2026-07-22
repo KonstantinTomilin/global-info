@@ -70,8 +70,9 @@ async function main() {
           void (async () => {
             try {
               const n = await pumpResumableUnifiedCollections();
+              // n = ticks actually started (not merely listed). Idle prepare WAITING is skipped.
               if (n > 0) {
-                console.error(`[unified-startup] pump scheduled ${n} resumable job(s)`);
+                console.error(`[unified-startup] pump started ${n} tick(s)`);
               }
             } catch (err) {
               console.error(
