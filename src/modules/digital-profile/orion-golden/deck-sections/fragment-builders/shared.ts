@@ -111,6 +111,12 @@ export type FragmentExtras = {
   };
   /** C6 — one full disclosure per material; brief/surface angles elsewhere. */
   crossSlideDisclosurePlan?: import("../../contracts/cross-slide-disclosure-plan").CrossSlideDisclosurePlan | null;
+  /** C8 — composed summary for content-quality harness (optional on legacy dirs). */
+  composedClientSummary?: import("../../contracts/composed-client-summary").ComposedClientSummary | null;
+  canonicalClaims?: import("../../contracts/canonical-claim").CanonicalClaimBundle | null;
+  itemAnalysisBundle?: import("../../contracts/item-analysis").ItemAnalysisBundle | null;
+  sourceTextByEvidenceRef?: Record<string, string>;
+  excludeEvidenceRefs?: string[];
 };
 
 /** Loose theme match: token overlap between a finding theme and a GPT risk theme. */

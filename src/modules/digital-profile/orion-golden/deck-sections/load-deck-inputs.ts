@@ -15,6 +15,10 @@ import type { VerifiedFindingBundle } from "../contracts/verified-finding-bundle
 import type { Finding } from "../contracts/finding";
 import type { SurfaceAnalysis } from "../contracts/surface-analysis";
 import type { CrossSlideDisclosurePlan } from "../contracts/cross-slide-disclosure-plan";
+import type { ComposedClientSummary } from "../contracts/composed-client-summary";
+import type { CanonicalClaimBundle } from "../contracts/canonical-claim";
+import type { ItemAnalysisBundle } from "../contracts/item-analysis";
+import type { SourceContentIndex } from "../contracts/source-content-index";
 import type {
   ScopedEvidenceIndex,
   MetricSnapshot,
@@ -114,10 +118,44 @@ export type CanonicalDeckInputs = {
   surfaceCollectionHints: SurfaceCollectionHint[];
   /** C6 — optional on older analytics dirs; when absent, builders use legacy claim text. */
   crossSlideDisclosurePlan: CrossSlideDisclosurePlan | null;
+  /** C8 — optional content-quality harness inputs from analytics dir. */
+  composedClientSummary: ComposedClientSummary | null;
+  canonicalClaims: CanonicalClaimBundle | null;
+  itemAnalysisBundle: ItemAnalysisBundle | null;
+  sourceTextByEvidenceRef: Record<string, string>;
+  excludeEvidenceRefs: string[];
 };
 
 function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, "utf8")) as T;
+}
+
+function readOptionalJson<T>(path: string): T | null {
+  if (!existsSync(path)) return null;
+  try {
+    return readJson<T>(path);
+  } catch {
+    return null;
+  }
+}
+
+function sourceTextMapFromIndex(index: SourceContentIndex | null): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!index) return out;
+  for (const e of index.entries ?? []) {
+    const text = [e.extractedTitle, e.extractedText].filter(Boolean).join("\n\n").trim();
+    if (text) out[e.evidenceRef] = text;
+  }
+  return out;
+}
+
+function appendixRefsFromDisposition(
+  raw: { entries?: Array<{ evidenceRef?: string; disposition?: string }> } | null
+): string[] {
+  if (!raw?.entries) return [];
+  return raw.entries
+    .filter((e) => e.disposition === "APPENDIX_OTHER" && e.evidenceRef)
+    .map((e) => String(e.evidenceRef));
 }
 
 const RISK_ORDER: Record<string, number> = { none: 0, low: 1, medium: 2, high: 3, critical: 4 };
@@ -413,14 +451,25 @@ export function loadDeckInputsFromAnalyticsDir(analyticsDir: string): CanonicalD
   };
 
   const disclosurePath = join(analyticsDir, "cross-slide-disclosure-plan.json");
-  let crossSlideDisclosurePlan: CrossSlideDisclosurePlan | null = null;
-  if (existsSync(disclosurePath)) {
-    try {
-      crossSlideDisclosurePlan = readJson<CrossSlideDisclosurePlan>(disclosurePath);
-    } catch {
-      crossSlideDisclosurePlan = null;
-    }
-  }
+  const crossSlideDisclosurePlan = readOptionalJson<CrossSlideDisclosurePlan>(disclosurePath);
+
+  const composedClientSummary = readOptionalJson<ComposedClientSummary>(
+    join(analyticsDir, "composed-client-summary.json")
+  );
+  const canonicalClaims = readOptionalJson<CanonicalClaimBundle>(
+    join(analyticsDir, "canonical-claims.json")
+  );
+  const itemAnalysisBundle = readOptionalJson<ItemAnalysisBundle>(
+    join(analyticsDir, "item-analysis.json")
+  );
+  const sourceContentIndex = readOptionalJson<SourceContentIndex>(
+    join(analyticsDir, "source-content-index.json")
+  );
+  const evidenceQualityDisposition = readOptionalJson<{
+    entries?: Array<{ evidenceRef?: string; disposition?: string }>;
+  }>(join(analyticsDir, "evidence-quality-disposition.json"));
+  const sourceTextByEvidenceRef = sourceTextMapFromIndex(sourceContentIndex);
+  const excludeEvidenceRefs = appendixRefsFromDisposition(evidenceQualityDisposition);
 
   return {
     caseId: binding.caseId,
@@ -438,5 +487,10 @@ export function loadDeckInputsFromAnalyticsDir(analyticsDir: string): CanonicalD
     uncategorizedMaterials,
     surfaceCollectionHints,
     crossSlideDisclosurePlan,
+    composedClientSummary,
+    canonicalClaims,
+    itemAnalysisBundle,
+    sourceTextByEvidenceRef,
+    excludeEvidenceRefs,
   };
 }

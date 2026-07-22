@@ -27,6 +27,10 @@ import {
   assertSemanticPaginationGatesPass,
   countClientTextTruncations,
 } from "./semantic-summary-pagination";
+import {
+  assertContentQualityGatesPass,
+  evaluateContentQuality,
+} from "./content-quality-harness";
 
 export type DeckBuildResult = {
   packs: SectionPackV2[];
@@ -151,6 +155,29 @@ export function runDeckBuild(input: {
   // Fail-closed when C6 disclosure plan is present (new content path).
   if (disclosurePlan) {
     assertSemanticPaginationGatesPass(paginationReport);
+  }
+
+  // C8 — content-quality evaluation harness (deterministic editorial gates).
+  const contentQualityReport = evaluateContentQuality({
+    caseId: ctx.caseId,
+    datasetId: ctx.sourceDatasetId,
+    packs,
+    findings: ctx.bundle.findings,
+    composedClientSummary: ctx.extras.composedClientSummary ?? null,
+    canonicalClaims: ctx.extras.canonicalClaims ?? null,
+    itemAnalysis: ctx.extras.itemAnalysisBundle ?? null,
+    sourceTextByEvidenceRef: ctx.extras.sourceTextByEvidenceRef,
+    excludeEvidenceRefs: ctx.extras.excludeEvidenceRefs,
+    allowedProfileTokens: [
+      ctx.subject.displayName,
+      ...(ctx.subject.aliases ?? []),
+    ].filter(Boolean),
+  });
+  const contentQualityPath = join(input.outputRoot, "content-quality-report.json");
+  writeFileSync(contentQualityPath, JSON.stringify(contentQualityReport, null, 2), "utf8");
+  artifacts["content-quality-report.json"] = contentQualityPath;
+  if (disclosurePlan) {
+    assertContentQualityGatesPass(contentQualityReport);
   }
 
   // 3. Persist every SectionPack independently.
