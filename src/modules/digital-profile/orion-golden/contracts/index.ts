@@ -13,5 +13,7 @@ export * from "./executive-summary";
 export * from "./section-pack";
 export * from "./surface-fragment";
 export * from "./assembled-deck-model";
+export * from "./source-content-index";
+export * from "./item-analysis";
 export * from "./validate";
 export * from "./fixtures";

@@ -64,6 +64,10 @@ import {
   isGptThemesEnabled,
   runGptThemeSuggestion,
 } from "../gpt/gpt-theme-suggester";
+import { runSourceContentAcquisition } from "../content-acquisition/run-source-content-acquisition";
+import type { SourceContentIndex } from "../contracts/source-content-index";
+import { runGroundedItemAnalyst } from "../grounded-item-analyst/run-grounded-item-analyst";
+import type { ItemAnalysisBundle } from "../contracts/item-analysis";
 
 export type AnalyticsPipelineInput = {
   caseId: string;
@@ -88,6 +92,12 @@ export type AnalyticsPipelineInput = {
   /** Injectable GPT callers for offline tests (§2.4 / §3.3). */
   gptIdentityCaller?: GptJsonCaller;
   gptThemesCaller?: GptJsonCaller;
+  /** C1 — injectable page fetch for SourceContentAcquisition offline tests. */
+  sourceContentFetchPage?: import("../content-acquisition/page-fetch").PageFetchFn;
+  /** C1 — force offline acquisition (cache/snippet only). */
+  sourceContentForceOffline?: boolean;
+  /** C2 — injectable grounded item analyst caller (recorded fixtures / live). */
+  groundedItemCaller?: GptJsonCaller | null;
 };
 
 export type AnalyticsPipelineResult = {
@@ -100,6 +110,10 @@ export type AnalyticsPipelineResult = {
   executiveSummary: ExecutiveSummaryStageResult;
   benchmarkTrace: BenchmarkTrace;
   reportDataBinding: ReportDataBinding;
+  /** C1 — article body acquisition index (always emitted; may be snippet_only offline). */
+  sourceContentIndex: SourceContentIndex;
+  /** C2 — grounded per-item analyses (always non-empty for selected sources). */
+  itemAnalysisBundle: ItemAnalysisBundle;
   artifactPaths: Record<string, string>;
 };
 
@@ -580,6 +594,41 @@ export async function runOrionAnalyticsPipeline(
   };
   emit("report-data-binding.json", reportDataBinding);
 
+  // C1 — SourceContentAcquisition: article bodies for PRIMARY/SUPPORTING (+ appendix top-N).
+  // Failures → snippet_only entries; never silent-drop selected materials.
+  const sourceContentIndex = await runSourceContentAcquisition({
+    caseId: input.caseId,
+    datasetId,
+    artifactsDir: input.artifactsDir,
+    findings: synthesis.bundle.findings,
+    items: input.items,
+    fetchPage: input.sourceContentFetchPage,
+    forceOffline: input.sourceContentForceOffline,
+  });
+  // runSourceContentAcquisition already wrote the JSON files; record hashes/paths.
+  emit("source-content-index.json", sourceContentIndex);
+  emit("source-content-coverage.json", sourceContentIndex.coverage);
+
+  // C2 — Grounded per-item analyst (LLM injectable; deterministic fallback always non-empty).
+  const itemAnalysisBundle = await runGroundedItemAnalyst({
+    caseId: input.caseId,
+    datasetId,
+    artifactsDir: input.artifactsDir,
+    sourceContent: sourceContentIndex,
+    items: input.items,
+    findings: synthesis.bundle.findings,
+    subject: {
+      subjectId: input.caseId,
+      displayName: String(input.subjectProfile.displayName ?? ""),
+      aliases: input.subjectProfile.aliases ?? [],
+      contextIdentifiers: input.subjectProfile.contextIdentifiers ?? [],
+    },
+    caller: input.groundedItemCaller,
+  });
+  emit("item-analysis.json", itemAnalysisBundle);
+  emit("grounding-report.json", itemAnalysisBundle.groundingReport);
+  emit("fallback-report.json", itemAnalysisBundle.fallbackReport);
+
   return {
     reconciliation,
     composite,
@@ -590,6 +639,8 @@ export async function runOrionAnalyticsPipeline(
     executiveSummary,
     benchmarkTrace,
     reportDataBinding,
+    sourceContentIndex,
+    itemAnalysisBundle,
     artifactPaths,
   };
 }

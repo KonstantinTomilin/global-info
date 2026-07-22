@@ -394,7 +394,11 @@ function assertGptFallbackPolicy(input: {
   );
 
   if (decision.ok) return;
-  throw new CanonicalPrepareBlockedError(decision.code, decision.reason);
+  const code =
+    decision.code === "GPT_CALLER_UNAVAILABLE"
+      ? "GPT_COPY_CALLER_UNAVAILABLE"
+      : "GPT_LAYER_FALLBACK_FORBIDDEN";
+  throw new CanonicalPrepareBlockedError(code, decision.reason);
 }
 
 function resolveSubjectProfile(input: CanonicalPrepareInput): ClassifierSubjectProfile {
