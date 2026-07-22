@@ -24,15 +24,17 @@ function firstSentence(text: string, maxLen = 220): string {
 }
 
 function briefFromBlock(block: ComposedThemeBlock): string {
+  // Distinct from fullText: no shared conclusion/why sentences (C6 dedupe gate).
   const art = block.articles[0];
-  const lead = firstSentence(block.conclusion, 180);
+  const domains = block.articles.map((a) => a.domain).slice(0, 2).join(", ");
+  const lead = `В резюме зафиксирована тема «${block.themeLabel}»${domains ? ` (сигналы: ${domains})` : ""}; полный разбор — в тематическом разделе.`;
   const example = art
-    ? firstSentence(`${art.domain}: ${art.body.split("\n")[0] ?? ""}`, 200)
+    ? `Ключевой материал: ${art.domain}.`
     : "";
-  const why = firstSentence(block.whyItMatters, 160);
-  return [lead, example, why ? `Почему важно: ${why}` : ""]
-    .filter(Boolean)
-    .join("\n");
+  const action = block.recommendedChecks[0]
+    ? `Дальше: ${firstSentence(block.recommendedChecks[0], 120)}`
+    : "";
+  return [lead, example, action].filter(Boolean).join("\n");
 }
 
 function matrixFromBlock(block: ComposedThemeBlock): string {
