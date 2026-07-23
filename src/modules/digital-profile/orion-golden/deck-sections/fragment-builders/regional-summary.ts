@@ -16,7 +16,6 @@ import {
 import { sanitizeSerpTitleForClient } from "../../analytics/incomplete-client-sentences";
 import {
   claimText,
-  clampClientText,
   coverageContent,
   emptyStatusForReason,
   findingBlocks,
