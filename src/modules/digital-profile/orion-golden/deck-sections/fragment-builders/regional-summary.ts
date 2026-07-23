@@ -19,6 +19,7 @@ import {
   coverageContent,
   emptyStatusForReason,
   findingBlocks,
+  clampClientText,
   fitClientSentences,
   isAdverse,
   localizedThemedClaim,
@@ -229,8 +230,9 @@ export function buildRegionalSummaryFragment(
         // Keep action; omit whatWasFound/whyItMatters from findingBlocks so the
         // page stays «итог → темы → действие», not a second technical essay.
         // C6 — region prefix so RU_SUMMARY / UAE_SUMMARY never share one sentence.
+        // Re-clamp after prefix so section QA whatToCheck (280) cannot trip.
         whatToCheck: regionalAction
-          ? `В разделе «${regionLabel}»: ${regionalAction}`
+          ? clampClientText(`В разделе «${regionLabel}»: ${regionalAction}`, 280)
           : undefined,
         sourceNote: sourceLine(scoped, extras),
       },

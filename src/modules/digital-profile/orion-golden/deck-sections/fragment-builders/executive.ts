@@ -568,20 +568,24 @@ export const RISK_MATRIX_LIKELY_AGGREGATE_ID = "finding-likely-aggregate";
 function riskMatrixDetail(f: Finding, extras?: FragmentExtras): string {
   // PDF-40 G.1b / PDF-46 I.4 — headline shows theme; keep structured lines whole.
   // C6 — matrix uses brief disclosure; C7 — no mid-cut fitStructuredBullet.
+  // Section QA bullet budget is 900: never stack GPT explanation (often 400+)
+  // on matrixText — that failed EXECUTIVE/RISK_MATRIX on live Deripaska.
+  const bulletBudget = 900;
   const claim = claimBodyWithoutTheme(f, {
     disclosureText: resolveDisclosureClaimText(f, "RISK_MATRIX", extras),
   });
   if (f.subjectMatch === "LIKELY_SUBJECT") {
-    return [
-      claim,
-      "Принадлежность пока не подтверждена — до уточнения идентификации материал не включаем в итог «об этом лице».",
-    ].join("\n");
+    return clampClientText(
+      [
+        claim,
+        "Принадлежность пока не подтверждена — до уточнения идентификации материал не включаем в итог «об этом лице».",
+      ].join("\n"),
+      bulletBudget
+    );
   }
   const risk = matchGptKeyRisk(f.theme, extras?.gptCaseAnalysis?.keyRisks);
-  if (risk) {
-    return [claim, risk.explanation, `Что делать: ${risk.advice}`].join("\n");
-  }
-  return [claim, `Что делать: ${f.recommendedAction}`].join("\n");
+  const action = (risk?.advice ?? f.recommendedAction).trim() || "Уточнить первоисточники в тематическом резюме.";
+  return clampClientText([claim, `Что делать: ${action}`].join("\n"), bulletBudget);
 }
 
 function riskMatrixRow(f: Finding): string[] {

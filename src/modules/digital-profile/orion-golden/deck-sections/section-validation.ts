@@ -119,9 +119,13 @@ export function validateSectionPack(input: {
     checkText(issues, slide.slideId, "whyItMatters", slide.content.whyItMatters, TEXT_BUDGETS.whyItMatters);
     checkText(issues, slide.slideId, "whatToCheck", slide.content.whatToCheck, TEXT_BUDGETS.whatToCheck);
     for (const b of slide.content.bullets ?? []) {
-      // AI answers are exempt from the bullet budget (no truncation allowed),
-      // but never from the internal-token check.
-      const budget = slide.templateId === "ai-overview" ? Number.MAX_SAFE_INTEGER : TEXT_BUDGETS.bullet;
+      // AI answers and regional full-disclosure theme blocks are exempt from
+      // the bullet char budget (C6/C7: one owner carries full ORION prose;
+      // atomic pagination moves the whole block). Still check internal tokens.
+      const budget =
+        slide.templateId === "ai-overview" || slide.templateId === "regional-summary"
+          ? Number.MAX_SAFE_INTEGER
+          : TEXT_BUDGETS.bullet;
       checkText(issues, slide.slideId, "bullet", b, budget);
     }
     for (const row of slide.content.table?.rows ?? []) {
