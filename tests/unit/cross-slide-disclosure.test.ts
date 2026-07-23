@@ -7,11 +7,16 @@ import {
   assertCrossSlideDedupeGatesPass,
   inspectCrossSlideDuplicateSentences,
 } from "../../src/modules/digital-profile/orion-golden/deck-sections/cross-slide-dedupe-qa";
-import { resolveDisclosureClaimText } from "../../src/modules/digital-profile/orion-golden/deck-sections/fragment-builders/shared";
+import {
+  buildPageEvidenceView,
+  pageFindingBlocks,
+  resolveDisclosureClaimText,
+} from "../../src/modules/digital-profile/orion-golden/deck-sections/fragment-builders/shared";
 import type { ComposedClientSummary } from "../../src/modules/digital-profile/orion-golden/contracts/composed-client-summary";
 import type { Finding } from "../../src/modules/digital-profile/orion-golden/contracts/finding";
 import type { SectionPackV2 } from "../../src/modules/digital-profile/orion-golden/deck-sections/contracts";
 import { COMPOSED_CLIENT_SUMMARY_VERSION } from "../../src/modules/digital-profile/orion-golden/contracts/composed-client-summary";
+import type { ScopedFragmentInput } from "../../src/modules/digital-profile/orion-golden/deck-sections/scoped-input";
 
 function finding(partial: Partial<Finding> & Pick<Finding, "findingId" | "theme">): Finding {
   return {
@@ -118,6 +123,42 @@ describe("C6 cross-slide disclosure", () => {
     );
     expect(resolveDisclosureClaimText(f, "RISK_MATRIX", extras)).toBe(m.matrixText);
     expect(resolveDisclosureClaimText(f, "RU_SERP", extras)).toBe(m.surfaceAngles.serp);
+    // Page-scoped SERP QA: surface angle must not embed concrete domains.
+    expect(m.surfaceAngles.serp).not.toMatch(/\b[\w-]+\.[\w.-]+\b/u);
+  });
+
+  it("SERP sidebar without disclosure plan stays page-scoped (no global claim domains)", () => {
+    const f = finding({
+      findingId: "finding-criminal",
+      theme: "Криминальные / судебные материалы",
+      claim:
+        "По теме видны материалы highways.today и tadviser.com — полный разбор в резюме.",
+      evidenceRefs: ["inventory:on-page", "inventory:off-page"],
+      sourceDomains: ["highways.today", "tadviser.com", "reuters.com"],
+    });
+    const scoped = {
+      findings: [f],
+      evidenceIndex: {
+        "inventory:on-page": {
+          domain: "reuters.com",
+          title: "Судебный сюжет",
+          url: "https://reuters.com/a",
+        },
+        "inventory:off-page": {
+          domain: "highways.today",
+          title: "Другая страница",
+          url: "https://highways.today/b",
+        },
+      },
+      metricSnapshot: { perRegionCounts: { RU: 1 }, ambiguousCount: 0 },
+      surfaceUnits: [],
+    } as unknown as ScopedFragmentInput;
+    const view = buildPageEvidenceView(scoped, ["inventory:on-page"]);
+    const blocks = pageFindingBlocks(scoped, view, undefined, {}, "RU_SERP");
+    expect(blocks.whatWasFound).toMatch(/reuters\.com/u);
+    expect(blocks.whatWasFound).not.toMatch(/highways\.today|tadviser\.com/u);
+    expect(blocks.sourceNote).toMatch(/reuters\.com/u);
+    expect(blocks.sourceNote).not.toMatch(/highways\.today/u);
   });
 
   it("defaults full owner to RU_SUMMARY even without region tags", () => {
@@ -174,6 +215,67 @@ describe("C6 cross-slide disclosure", () => {
     ] as unknown as SectionPackV2[];
     const report = inspectCrossSlideDuplicateSentences(packs);
     expect(report.CROSS_SLIDE_DUPLICATE_SENTENCES).toBe(0);
+  });
+
+  it("never resolves executive briefText onto a non-owner RU_SUMMARY page", () => {
+    const plan = buildCrossSlideDisclosurePlan({
+      caseId: "c",
+      datasetId: "d",
+      composed: composed(),
+      findings: [
+        finding({
+          findingId: "finding-criminal",
+          theme: "Криминальные / судебные материалы",
+          regions: ["UAE"],
+        }),
+      ],
+    });
+    const m = plan.materials[0]!;
+    expect(m.fullOwnerFragment).toBe("UAE_SUMMARY");
+    const extras = { crossSlideDisclosurePlan: plan };
+    const f = finding({
+      findingId: "finding-criminal",
+      theme: "Криминальные / судебные материалы",
+      regions: ["UAE"],
+    });
+    const exec = resolveDisclosureClaimText(f, "EXECUTIVE_SUMMARY", extras);
+    const overview = resolveDisclosureClaimText(f, "DIGITAL_PROFILE_OVERVIEW", extras);
+    const ru = resolveDisclosureClaimText(f, "RU_SUMMARY", extras);
+    const uae = resolveDisclosureClaimText(f, "UAE_SUMMARY", extras);
+    expect(exec).toBe(m.briefText);
+    expect(overview).toBe(m.briefText);
+    expect(uae).toBe(m.fullText);
+    expect(ru).not.toBe(m.briefText);
+    expect(ru).not.toBe(m.fullText);
+    expect(ru).toMatch(/не повторяется/i);
+
+    const packs = [
+      {
+        fragmentKey: "DIGITAL_PROFILE_OVERVIEW",
+        slides: [{ content: { bullets: [overview] } }],
+      },
+      {
+        fragmentKey: "EXECUTIVE_SUMMARY",
+        slides: [{ content: { bullets: [exec] } }],
+      },
+      {
+        fragmentKey: "RU_SUMMARY",
+        slides: [{ content: { bullets: [ru] } }],
+      },
+      {
+        fragmentKey: "UAE_SUMMARY",
+        slides: [{ content: { bullets: [uae] } }],
+      },
+    ] as unknown as SectionPackV2[];
+    const report = inspectCrossSlideDuplicateSentences(packs);
+    expect(report.CROSS_SLIDE_DUPLICATE_SENTENCES).toBe(0);
+    expect(() =>
+      assertCrossSlideDedupeGatesPass({
+        ...report,
+        MATERIALS_WITHOUT_FULL_DISCLOSURE: 0,
+        MATERIALS_WITH_MULTIPLE_FULL_DISCLOSURES: 0,
+      })
+    ).not.toThrow();
   });
 
   it("allows shared brief among overview/executive but not leak into RU_SUMMARY", () => {

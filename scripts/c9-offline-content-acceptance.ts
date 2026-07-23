@@ -242,6 +242,10 @@ function runSyntheticEditorial(): SuiteResult {
     const brief = plan.materials[0]!.briefText;
     const packs = [
       {
+        fragmentKey: "DIGITAL_PROFILE_OVERVIEW",
+        slides: [{ content: { bullets: [brief] } }],
+      },
+      {
         fragmentKey: "RU_SUMMARY",
         slides: [{ content: { bullets: [full] } }],
       },

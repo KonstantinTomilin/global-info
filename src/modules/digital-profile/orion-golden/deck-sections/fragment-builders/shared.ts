@@ -670,8 +670,15 @@ export function pageFindingBlocks(
   const adverse = view.findings.filter(isAdverse);
   const top = view.findings[0];
   if (top) {
+    // C6 surface angles only — never fall back to the finding's global claim
+    // (it cites off-page domains and fails page-scope domain QA on SERP).
+    const hasDisclosureRow = Boolean(
+      extras?.crossSlideDisclosurePlan?.materials.some(
+        (m) => m.findingId === top.findingId
+      )
+    );
     const surfaceAngle =
-      extras && fragmentKey
+      hasDisclosureRow && extras && fragmentKey
         ? resolveDisclosureClaimText(top, fragmentKey, extras)
         : null;
     const useSurfaceAngle =
@@ -928,7 +935,15 @@ export function resolveDisclosureClaimText(
   if (!row) return String(f.claim ?? "").trim();
 
   if (fragmentKey === "RU_SUMMARY" || fragmentKey === "UAE_SUMMARY") {
-    return fragmentKey === row.fullOwnerFragment ? row.fullText : row.briefText;
+    if (fragmentKey === row.fullOwnerFragment) return row.fullText;
+    // Non-owner regional page must NOT reuse executive briefText — that is exactly
+    // what blew CROSS_SLIDE_DUPLICATE_SENTENCES (OVERVIEW+EXEC+RU) on live Deripaska.
+    const ownerLabel =
+      row.fullOwnerFragment === "UAE_SUMMARY" ? "международном" : "российском";
+    return (
+      `Тема «${row.themeLabel}» подробно раскрыта в ${ownerLabel} резюме; ` +
+      `на этой региональной странице полный текст не повторяется.`
+    );
   }
   if (fragmentKey === "EXECUTIVE_SUMMARY" || fragmentKey === "DIGITAL_PROFILE_OVERVIEW") {
     // Executive cards are budget-capped (~900); never put full ORION prose here.

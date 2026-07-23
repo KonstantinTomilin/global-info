@@ -350,14 +350,22 @@ export function resolveExampleQuote(
   item: RawInventoryItem,
   theme: ThemeDef
 ): ClaimEvidenceExample | null {
-  // C4 — never surface social/meme junk as adverse theme examples.
+  // C4 — never surface social/meme/non-article junk as adverse theme examples.
+  // Weak / snippet-only titles are NOT hard-fail here: H.2 / PDF-47 recover a
+  // client headline from a thematic snippet (bare FIO + debt snippet, SERP «…»).
   if (ADVERSE_THEME_IDS.has(theme.themeId)) {
     const gate = itemAdverseExampleEligibility(
       item,
       theme,
       isWeakExampleTitle(String(item.title ?? ""), { theme })
     );
-    if (!gate.eligibleAsAdverseExample) return null;
+    if (
+      !gate.eligibleAsAdverseExample &&
+      gate.reason !== "weak_example_title" &&
+      gate.reason !== "snippet_without_thematic_title"
+    ) {
+      return null;
+    }
   }
   const domain = domainOf(item.sourceUrl);
   const title = cleanExampleTitle(String(item.title ?? ""));

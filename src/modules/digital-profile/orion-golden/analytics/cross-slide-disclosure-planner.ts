@@ -21,8 +21,9 @@ function briefFromBlock(block: ComposedThemeBlock): string {
   const example = art
     ? `Ключевой материал: ${art.domain}.`
     : "";
-  const action =
-    "Чек-лист и разбор первоисточников — в региональном резюме по этой теме.";
+  // Theme-specific: a shared checklist sentence across materials previously
+  // multiplied CROSS_SLIDE_DUPLICATE_SENTENCES when brief leaked onto RU_SUMMARY.
+  const action = `Чек-лист и разбор первоисточников по теме «${block.themeLabel}» — в региональном резюме.`;
   return [lead, example, action].filter(Boolean).join("\n");
 }
 
@@ -35,10 +36,11 @@ function matrixFromBlock(block: ComposedThemeBlock): string {
 }
 
 function surfaceAnglesFromBlock(block: ComposedThemeBlock): MaterialDisclosure["surfaceAngles"] {
-  const domains = block.articles.map((a) => a.domain).slice(0, 2).join(", ");
+  // No concrete domains here: SERP/images slides are page-scoped and QA
+  // rejects domains that are not on that slide's evidenceRefs.
   const theme = block.themeLabel;
   return {
-    serp: `В поисковой выдаче по теме «${theme}» видны релевантные результаты${domains ? ` (${domains})` : ""}; полный разбор — в региональном резюме.`,
+    serp: `В поисковой выдаче по теме «${theme}» видны релевантные результаты; полный разбор — в региональном резюме.`,
     images: `В блоке изображений по теме «${theme}» показаны визуальные материалы, связанные с сюжетом; смысл риска раскрыт в тематическом резюме, не в подписи к картинке.`,
     suggestions: `Подсказки поиска по теме «${theme}» отражают, как запрос формулируют пользователи; содержательный разбор публикаций — в резюме по региону.`,
   };

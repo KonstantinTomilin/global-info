@@ -91,7 +91,8 @@ describe("G.1b / G.2 — client claim shape", () => {
     expect(claim).toContain("— источник reuters.com");
     expect(claim).toMatch(/Где видно:.*(?:dzen\.ru|reuters\.com)/u);
     expect(claim).toContain("Всего по теме:");
-    expect(claim).toMatch(/банк|партн/iu);
+    // C5 — offline stub why is neutral; article-specific why comes from composer.
+    expect(claim).toMatch(/первичн/iu);
     expect(claim).not.toMatch(/в выдаче устойчиво видны/iu);
     expect(claim).not.toContain("негативным содержанием —");
   });
