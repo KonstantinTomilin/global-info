@@ -236,8 +236,8 @@ export function repaginateThemeBearingPacks(packs: ThemePackLike[]): number {
         base: {
           ...base,
           isContinuation: false,
-          continuationOf: undefined,
-          continuationIndex: undefined,
+          continuationOf: null,
+          continuationIndex: null,
           content: { ...base.content, bullets: allBullets },
         },
         templateId: "regional-summary",
