@@ -267,7 +267,8 @@ export function evaluateContentQuality(input: ContentQualityEvalInput): ContentQ
   let incomplete = 0;
   for (const t of allClientTexts) {
     tech += countTechnicalTokens(t);
-    incomplete += countIncompleteSentences(t);
+    // Strip QA-only `[finding-…]` before incomplete scan (markers are not prose).
+    incomplete += countIncompleteSentences(stripQaMarkersForTechScan(t));
   }
 
   const trunc = countClientTextTruncations(themeTexts);

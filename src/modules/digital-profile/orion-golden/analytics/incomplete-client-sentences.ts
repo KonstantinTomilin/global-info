@@ -29,15 +29,28 @@ export function countIncompleteSentences(text: string): number {
 
   let n = 0;
   for (const p of parts) {
-    // Closed sentence — never count inner quotes / dangling false-positives.
-    if (/[.!?]$/u.test(p)) continue;
-
-    if (/[,;]$/u.test(p)) {
+    // Ellipsis mid-cut first — do not treat «…» as a complete stop.
+    if (/(?:\.\.\.|…)$/u.test(p)) {
       n += 1;
       continue;
     }
-    // Ellipsis / `...` without a hard stop = mid-cut for composed prose.
-    if (/(?:\.\.\.|…)$/u.test(p)) {
+    // Closed sentence — including Russian typography «…текст.» / «…текст!».
+    if (/[.!?][»"'”']?$/u.test(p)) continue;
+
+    // Structured ORION scan lines are complete without a final period.
+    if (
+      /^(Всего по теме|В корпусе|Где видно|Источник|Ключевой материал|Что проверить|Что делать)\s*:/iu.test(
+        p
+      )
+    ) {
+      continue;
+    }
+    // Quote attribution line: «…» — источник domain.com
+    if (/»\s*—\s*источник\s+[\w.-]+$/iu.test(p) || /—\s*источник\s+[\w.-]+$/iu.test(p)) {
+      continue;
+    }
+
+    if (/[,;]$/u.test(p)) {
       n += 1;
       continue;
     }
@@ -53,8 +66,9 @@ export function countIncompleteSentences(text: string): number {
       n += 1;
       continue;
     }
-    // Long fragment with no terminal punctuation at all.
-    if (p.length >= 12) n += 1;
+    // Do NOT flag every long fragment without `.` — that false-positived live
+    // Deripaska (CLIENT_INCOMPLETE_SENTENCES=37) on theme bullets / scan lines.
+    // Real mid-cuts are covered by comma / ellipsis / dangling / open-paren above.
   }
   return n;
 }

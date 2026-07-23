@@ -237,4 +237,17 @@ describe("C5 client-summary-composer", () => {
       )
     ).toBeGreaterThanOrEqual(1);
   });
+
+  it("does not flag Russian ». closings or ORION scan lines as incomplete", () => {
+    expect(
+      countIncompleteSentences(
+        "«Самый говорливый олигарх.» — источник dzen.ru\nВсего по теме: 21 материал\nГде видно: dzen.ru, reuters.com"
+      )
+    ).toBe(0);
+    expect(
+      countIncompleteSentences(
+        "Ключевой материал: reuters.com\nЧто проверить: Сверить первоисточник"
+      )
+    ).toBe(0);
+  });
 });
