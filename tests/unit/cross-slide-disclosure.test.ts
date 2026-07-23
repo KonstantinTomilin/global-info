@@ -202,6 +202,31 @@ describe("C6 cross-slide disclosure", () => {
     expect(plan.materials[0]!.briefText).toMatch(/Суть сигнала:/u);
   });
 
+  it("never puts mid-cut SERP title stubs into brief/matrix/fullText", () => {
+    const dirty = composed();
+    dirty.mediaThemeBlocks[0]!.articles[0]!.body =
+      "В материале jamestown.org сообщается — «Oleg Deripaska and H\n\nИсточник: jamestown.org. Требуется проверка.";
+    dirty.mediaThemeBlocks[0]!.articles[0]!.whyItMatters =
+      "Такой сюжет обычно запускает расширенную проверку контрагента для due diligence и запрос первичных документов.";
+    const plan = buildCrossSlideDisclosurePlan({
+      caseId: "c",
+      datasetId: "d",
+      composed: dirty,
+      findings: [
+        finding({
+          findingId: "finding-criminal",
+          theme: "Криминальные / судебные материалы",
+          regions: ["RU"],
+        }),
+      ],
+    });
+    const m = plan.materials[0]!;
+    const blob = `${m.briefText}\n${m.matrixText}\n${m.fullText}`;
+    expect(blob).not.toMatch(/Deripaska and H/u);
+    expect(blob).not.toMatch(/\sдля\s*\.?$/mu);
+    expect(m.briefText).toMatch(/Суть сигнала:|Зачем это важно:/u);
+  });
+
   it("flags identical long sentences across fragments", () => {
     const dup =
       "По открытым СМИ выявлены существенные публикации по судебному сюжету, требующие проверки первичных документов немедленно.";

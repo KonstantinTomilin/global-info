@@ -12,18 +12,76 @@ import {
 import { resolveThemeRef } from "./canonical-claim-builder";
 import { themeBlockToClaimText } from "./client-summary-composer";
 
-/** Keep brief/matrix concrete but shorter than full ORION prose. */
+/** Trailing RU/EN glue left by a word-boundary cut — must not reach C7. */
+const DANGLING_CONCRETE_TAIL_RE =
+  /(?:\s+(?:и|а|но|или|же|то|что|как|при|про|для|без|под|над|из|из-за|от|до|по|к|ко|в|во|на|с|со|о|об|у|за|ещё|еще|также|and|or|of|the|to|for|with|from|by|on|in|at|as))+[.!?…]*$/iu;
+
+/** Mid-cut SERP/title stubs («…and H», «Sanctions on Russ», unclosed «…»). */
+function looksMidCutStub(text: string): boolean {
+  const t = String(text ?? "").trim().replace(/[.!?…]+$/u, "");
+  if (!t) return true;
+  if (/[,;:]$/u.test(t)) return true;
+  if (/\([^)]*$/u.test(t)) return true;
+  if (/«[^»]*$/u.test(t) || /^[^«]*»$/u.test(t)) return true;
+  if (DANGLING_CONCRETE_TAIL_RE.test(t)) return true;
+  // Single dangling capital after a short word («and H», «Deripaska and H»).
+  if (/\s+[A-ZА-ЯЁ]$/u.test(t)) return true;
+  // Obvious English title stump ending on a short token.
+  if (/\b(?:and|or|of|the|to|for|with|on|in)\s+[A-Za-z]{1,4}$/u.test(t)) return true;
+  return false;
+}
+
+/**
+ * Keep brief/matrix concrete but never emit C7 truncation tails.
+ * Prefer whole sentences; if none fit, return "" (caller falls back).
+ */
 function clipConcrete(text: string, max: number): string {
   const flat = String(text ?? "")
     .replace(/\s+/gu, " ")
     .replace(/^В материале\s+\S+\s+(?:сообщается|утверждается)\s*—\s*/u, "")
+    .replace(/^Источник:\s*/iu, "")
     .trim();
   if (!flat) return "";
-  if (flat.length <= max) return /[.!?…]$/u.test(flat) ? flat : `${flat}.`;
-  const slice = flat.slice(0, max);
-  const punct = Math.max(slice.lastIndexOf(". "), slice.lastIndexOf("! "), slice.lastIndexOf("? "));
-  const cut = punct > 40 ? slice.slice(0, punct + 1).trim() : slice.replace(/\s+\S*$/u, "").trim();
-  return /[.!?…]$/u.test(cut) ? cut : `${cut}.`;
+
+  const sentences = flat
+    .split(/(?<=[.!?…])\s+/u)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .filter((s) => !looksMidCutStub(s));
+
+  let out = "";
+  for (const s of sentences) {
+    const trial = out ? `${out} ${s}` : s;
+    if (trial.length > max) break;
+    out = trial;
+  }
+  if (!out) {
+    // No clean sentence — take text up to first mid-cut quote/title, then stop.
+    const beforeQuote = flat.split(/[«"]/u)[0]?.trim() ?? "";
+    out = beforeQuote.length >= 28 && beforeQuote.length <= max ? beforeQuote : "";
+  }
+  out = out.replace(DANGLING_CONCRETE_TAIL_RE, "").replace(/[\s,;:.—–-]+$/u, "").trim();
+  if (!out || out.length < 24 || looksMidCutStub(out)) return "";
+  return /[.!?…]$/u.test(out) ? out : `${out}.`;
+}
+
+/** Drop mid-cut quote/title lines from ORION fullText before it hits C7. */
+function sanitizeDisclosureProse(text: string): string {
+  return String(text ?? "")
+    .split("\n")
+    .map((ln) => ln.trim())
+    .filter(Boolean)
+    .filter((ln) => {
+      const core = ln
+        .replace(/^«|»$/gu, "")
+        .replace(/^В материале\s+\S+\s+(?:сообщается|утверждается)\s*—\s*/u, "")
+        .trim();
+      // Keep short theme headers; drop mid-cut evidence quotes/titles.
+      if (ln.length < 24 && /^«[^»]+»$/u.test(ln)) return true;
+      return !looksMidCutStub(core) && !looksMidCutStub(ln);
+    })
+    .join("\n")
+    .trim();
 }
 
 function briefFromBlock(block: ComposedThemeBlock): string {
@@ -33,14 +91,15 @@ function briefFromBlock(block: ComposedThemeBlock): string {
   // from fullText (different framing → C6 dedupe).
   const art = block.articles[0];
   const domains = block.articles.map((a) => a.domain).slice(0, 2).join(", ");
-  const allegation = art
-    ? clipConcrete(art.body, 260)
-    : clipConcrete(block.conclusion, 220);
+  const allegation =
+    (art ? clipConcrete(art.body, 260) : "") ||
+    clipConcrete(block.conclusion, 220) ||
+    clipConcrete(art?.whyItMatters || block.whyItMatters, 200);
   const why = clipConcrete(art?.whyItMatters || block.whyItMatters, 160);
   return [
     `«${block.themeLabel}»`,
     allegation ? `Суть сигнала: ${allegation}` : null,
-    why ? `Зачем это важно: ${why}` : null,
+    why && why !== allegation ? `Зачем это важно: ${why}` : null,
     domains ? `Где видно: ${domains}.` : null,
   ]
     .filter(Boolean)
@@ -50,9 +109,10 @@ function briefFromBlock(block: ComposedThemeBlock): string {
 function matrixFromBlock(block: ComposedThemeBlock): string {
   const art = block.articles[0];
   const domains = block.articles.map((a) => a.domain).slice(0, 2).join(", ");
-  const signal = art
-    ? clipConcrete(art.body, 200)
-    : clipConcrete(block.conclusion, 180);
+  const signal =
+    (art ? clipConcrete(art.body, 200) : "") ||
+    clipConcrete(block.conclusion, 180) ||
+    `тема «${block.themeLabel}» требует проверки первичных документов.`;
   return [
     `«${block.themeLabel}»`,
     signal ? `Сигнал: ${signal}` : null,
@@ -116,7 +176,10 @@ export function buildCrossSlideDisclosurePlan(input: {
     const block = blockForFinding(finding, input.composed);
     if (!block) continue;
     seenFindings.add(finding.findingId);
-    const fullText = themeBlockToClaimText(block);
+    const fullText =
+      sanitizeDisclosureProse(themeBlockToClaimText(block)) || themeBlockToClaimText(block);
+    const briefText = sanitizeDisclosureProse(briefFromBlock(block)) || briefFromBlock(block);
+    const matrixText = sanitizeDisclosureProse(matrixFromBlock(block)) || matrixFromBlock(block);
     materials.push({
       findingId: finding.findingId,
       themeId: block.themeId,
@@ -125,8 +188,8 @@ export function buildCrossSlideDisclosurePlan(input: {
         finding.evidenceRefs.length > 0 ? finding.evidenceRefs : block.evidenceRefs,
       fullOwnerFragment: pickFullOwner(finding),
       fullText,
-      briefText: briefFromBlock(block),
-      matrixText: matrixFromBlock(block),
+      briefText,
+      matrixText,
       surfaceAngles: surfaceAnglesFromBlock(block),
     });
   }

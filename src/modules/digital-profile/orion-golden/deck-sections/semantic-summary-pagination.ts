@@ -14,6 +14,9 @@ const TRUNCATION_MARKERS = [
   /\([^)]{0,12}$/u, // dangling open paren from mid-clip «(в.»
   /,\s*$/u,
   /\s+(?:и|в|на|по|с|со|о|об|из|от|для)\s*\.?$/iu,
+  // English glue left by title mid-cuts («…and H», «Sanctions on Russ»).
+  /\s+(?:and|or|of|the|to|for|with|from|by|on|in|at)\s+[A-Za-zА-Яа-яЁё]{1,4}\.?$/u,
+  /\s+(?:and|or|of|the|to|for|with|from|by|on|in|at)\s*\.?$/iu,
 ];
 
 export type SemanticPaginationReport = {

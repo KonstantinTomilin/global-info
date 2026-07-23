@@ -64,6 +64,16 @@ describe("C7 semantic-summary-pagination", () => {
     expect(count).toBeGreaterThanOrEqual(1);
   });
 
+  it("detects English mid-cut title stubs that failed live CLIENT_TEXT_TRUNCATIONS", () => {
+    const { count, samples } = countClientTextTruncations([
+      "В материале jamestown.org сообщается — Oleg Deripaska and H",
+      "Сигнал: Sanctions on Russ",
+      "Суть сигнала: расширенная проверка для.",
+    ]);
+    expect(count).toBeGreaterThanOrEqual(3);
+    expect(samples.join(" ")).toMatch(/Deripaska and H|Sanctions on Russ|для/u);
+  });
+
   it("uses 1 theme card/page when KPI chrome + long C6 full-disclosure bullets", () => {
     const long = `${"«Санкции»\n"}${"Полный разбор темы с источниками и проверками. ".repeat(20)}`;
     expect(long.length).toBeGreaterThan(360);
