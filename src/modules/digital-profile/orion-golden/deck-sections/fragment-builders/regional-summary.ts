@@ -49,15 +49,25 @@ function uncategorizedBulletForRegion(
     }
   }
   if (count === 0) return null;
+  // Sanitize SERP titles so C8 incomplete-sentence scan does not trip on
+  // provider ellipsis / odd ASCII quotes inside example lists (live =2 on RU+UAE).
   const titles = examples
     .map((e) => e.title.trim())
     .filter(Boolean)
-    .slice(0, 3);
+    .slice(0, 3)
+    .map((t) =>
+      clampClientText(t, 80)
+        .replace(/(?:\.\.\.|…)\s*$/u, "")
+        .replace(/[,;:\s]+$/u, "")
+        .replace(/"/g, "«")
+        .trim()
+    )
+    .filter(Boolean);
   const examplesNote = titles.length
-    ? ` (примеры: ${titles.map((t) => clampClientText(t, 80)).join(" · ")})`
+    ? ` (примеры: ${titles.join(" · ")})`
     : "";
   return {
-    bullet: `Другие материалы о субъекте: ${count}${examplesNote}`,
+    bullet: `Другие материалы о субъекте: ${count}${examplesNote}.`,
     evidenceRefs: examples.map((e) => e.evidenceRef),
     count,
   };

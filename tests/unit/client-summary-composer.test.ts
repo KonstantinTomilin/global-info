@@ -255,5 +255,10 @@ describe("C5 client-summary-composer", () => {
       )
     ).toBe(0);
     expect(countIncompleteSentences("Олег Дерипаска…")).toBe(0);
+    expect(
+      countIncompleteSentences(
+        'Другие материалы о субъекте: 342 (примеры: Вот Так Online · "Oleg Deripaska… · BBC News).'
+      )
+    ).toBe(0);
   });
 });

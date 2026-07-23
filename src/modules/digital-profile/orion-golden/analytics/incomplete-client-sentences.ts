@@ -44,7 +44,7 @@ export function countIncompleteSentences(text: string): number {
 
     // Structured ORION scan lines are complete without a final period.
     if (
-      /^(Всего по теме|В корпусе|Где видно|Источник|Ключевой материал|Что проверить|Что делать)\s*:/iu.test(
+      /^(Всего по теме|В корпусе|Где видно|Источник|Ключевой материал|Что проверить|Что делать|Другие материалы о субъекте)\s*:/iu.test(
         p
       )
     ) {
