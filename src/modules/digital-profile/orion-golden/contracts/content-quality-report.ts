@@ -41,6 +41,7 @@ export const ContentQualityReportSchema = z.object({
     ungroundedSentences: z.array(z.string()).max(12),
     truncations: z.array(z.string()).max(8),
     junkEvidenceRefs: z.array(z.string()).max(8),
+    incompleteSentences: z.array(z.string()).max(8).default([]),
   }),
   deterministicPass: z.boolean(),
 });
@@ -66,7 +67,11 @@ export function assertContentQualityGatesPass(report: ContentQualityReport): voi
     throw new Error(`CLIENT_TECHNICAL_TOKENS=${g.CLIENT_TECHNICAL_TOKENS}`);
   }
   if (g.CLIENT_INCOMPLETE_SENTENCES !== 0) {
-    throw new Error(`CLIENT_INCOMPLETE_SENTENCES=${g.CLIENT_INCOMPLETE_SENTENCES}`);
+    const sample = (report.samples.incompleteSentences ?? []).slice(0, 3).join(" | ");
+    throw new Error(
+      `CLIENT_INCOMPLETE_SENTENCES=${g.CLIENT_INCOMPLETE_SENTENCES}` +
+        (sample ? `; ${sample}` : "")
+    );
   }
   if (g.CLIENT_TEXT_TRUNCATIONS !== 0) {
     throw new Error(

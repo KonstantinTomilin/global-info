@@ -29,13 +29,18 @@ export function countIncompleteSentences(text: string): number {
 
   let n = 0;
   for (const p of parts) {
-    // Ellipsis mid-cut first — do not treat «…» as a complete stop.
+    // Ellipsis mid-cut — only long prose (short SERP headlines often end with «…»).
     if (/(?:\.\.\.|…)$/u.test(p)) {
-      n += 1;
+      const stem = p.replace(/(?:\.\.\.|…)$/u, "").trim();
+      if (p.length >= 48 || hasDanglingTail(stem) || /[,;]$/u.test(stem)) n += 1;
       continue;
     }
-    // Closed sentence — including Russian typography «…текст.» / «…текст!».
-    if (/[.!?][»"'”']?$/u.test(p)) continue;
+    // Closed sentence — «…текст.» / «…текст!» / «…текст».
+    if (/[.!?][»"'”']?$/u.test(p) || /[»"'”'][.!?]$/u.test(p)) continue;
+    // Balanced Russian theme/title card ending with ».
+    if (/»$/u.test(p) && (p.match(/«/gu) ?? []).length === (p.match(/»/gu) ?? []).length) {
+      continue;
+    }
 
     // Structured ORION scan lines are complete without a final period.
     if (
@@ -45,8 +50,8 @@ export function countIncompleteSentences(text: string): number {
     ) {
       continue;
     }
-    // Quote attribution line: «…» — источник domain.com
-    if (/»\s*—\s*источник\s+[\w.-]+$/iu.test(p) || /—\s*источник\s+[\w.-]+$/iu.test(p)) {
+    // Quote attribution line: «…» — источник domain.com (domain optional after strip).
+    if (/»\s*—\s*источник\b/iu.test(p) || /—\s*источник\b/iu.test(p)) {
       continue;
     }
 
@@ -62,13 +67,14 @@ export function countIncompleteSentences(text: string): number {
       n += 1;
       continue;
     }
-    if (((p.match(/"/g) ?? []).length) % 2 === 1) {
+    // Odd ASCII "…" — only when the fragment has no Russian «» (GPT often mixes).
+    const asciiQuotes = (p.match(/"/g) ?? []).length;
+    const ruOpen = (p.match(/«/gu) ?? []).length;
+    const ruClose = (p.match(/»/gu) ?? []).length;
+    if (asciiQuotes % 2 === 1 && ruOpen === 0 && ruClose === 0) {
       n += 1;
       continue;
     }
-    // Do NOT flag every long fragment without `.` — that false-positived live
-    // Deripaska (CLIENT_INCOMPLETE_SENTENCES=37) on theme bullets / scan lines.
-    // Real mid-cuts are covered by comma / ellipsis / dangling / open-paren above.
   }
   return n;
 }

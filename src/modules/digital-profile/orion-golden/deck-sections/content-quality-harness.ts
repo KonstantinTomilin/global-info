@@ -13,7 +13,10 @@ import {
   assertContentQualityGatesPass,
 } from "../contracts/content-quality-report";
 import { resolveThemeRef } from "../analytics/canonical-claim-builder";
-import { countIncompleteSentences } from "../analytics/incomplete-client-sentences";
+import {
+  countIncompleteSentences,
+  sampleIncompleteSentences,
+} from "../analytics/incomplete-client-sentences";
 import { matchInternalClientToken } from "../client/load-client-text-contract";
 import { scanOrionGoldenClientTextForForbiddenTokens } from "../client/client-text-sanitizer";
 import {
@@ -85,9 +88,12 @@ function collectThemePackTexts(packs: SectionPackV2[]): string[] {
  * Live Deripaska: CLIENT_TECHNICAL_TOKENS=36 was almost entirely trailing
  * `[finding-…]` markers on regional theme bullets (not client-facing prose).
  */
+function stripFindingMarkersOnly(text: string): string {
+  return text.replace(/\s*\[finding-[^\]]+\]\s*/giu, " ").replace(/\s+/gu, " ").trim();
+}
+
 function stripQaMarkersForTechScan(text: string): string {
-  return text
-    .replace(/\s*\[finding-[^\]]+\]\s*/giu, " ")
+  return stripFindingMarkersOnly(text)
     // Domains are legitimate client copy (audit-it.ru must not trip \baudit\b).
     .replace(/\b[\w-]+(?:\.[\w-]+)+\b/gu, " ")
     .replace(/\s+/gu, " ")
@@ -265,10 +271,20 @@ export function evaluateContentQuality(input: ContentQualityEvalInput): ContentQ
 
   let tech = 0;
   let incomplete = 0;
+  const incompleteSamples: string[] = [];
   for (const t of allClientTexts) {
     tech += countTechnicalTokens(t);
-    // Strip QA-only `[finding-…]` before incomplete scan (markers are not prose).
-    incomplete += countIncompleteSentences(stripQaMarkersForTechScan(t));
+    // Only strip QA `[finding-…]` markers — do NOT strip domains here
+    // (that previously turned «… — источник reuters.com» into a false incomplete).
+    const prose = stripFindingMarkersOnly(t);
+    const n = countIncompleteSentences(prose);
+    incomplete += n;
+    if (n > 0 && incompleteSamples.length < 8) {
+      for (const s of sampleIncompleteSentences(prose, 2)) {
+        if (incompleteSamples.length >= 8) break;
+        incompleteSamples.push(s);
+      }
+    }
   }
 
   const trunc = countClientTextTruncations(themeTexts);
@@ -351,6 +367,7 @@ export function evaluateContentQuality(input: ContentQualityEvalInput): ContentQ
       ungroundedSentences: grounding.samples.slice(0, 12),
       truncations: trunc.samples.slice(0, 8),
       junkEvidenceRefs: junk.refs.slice(0, 8),
+      incompleteSentences: incompleteSamples.slice(0, 8),
     },
     deterministicPass: false,
   };

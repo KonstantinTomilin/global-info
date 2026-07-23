@@ -249,5 +249,11 @@ describe("C5 client-summary-composer", () => {
         "Ключевой материал: reuters.com\nЧто проверить: Сверить первоисточник"
       )
     ).toBe(0);
+    expect(
+      countIncompleteSentences(
+        "Тема «Криминальные / судебные материалы» — уточнение для раздела «таблица выдачи (международный поиск)»."
+      )
+    ).toBe(0);
+    expect(countIncompleteSentences("Олег Дерипаска…")).toBe(0);
   });
 });
