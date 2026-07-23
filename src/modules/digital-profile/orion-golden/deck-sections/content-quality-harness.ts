@@ -80,13 +80,30 @@ function collectThemePackTexts(packs: SectionPackV2[]): string[] {
     .filter(Boolean);
 }
 
+/**
+ * Strip QA-only markers and URL domains before technical scans.
+ * Live Deripaska: CLIENT_TECHNICAL_TOKENS=36 was almost entirely trailing
+ * `[finding-…]` markers on regional theme bullets (not client-facing prose).
+ */
+function stripQaMarkersForTechScan(text: string): string {
+  return text
+    .replace(/\s*\[finding-[^\]]+\]\s*/giu, " ")
+    // Domains are legitimate client copy (audit-it.ru must not trip \baudit\b).
+    .replace(/\b[\w-]+(?:\.[\w-]+)+\b/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+}
+
 function countTechnicalTokens(text: string): number {
+  const t = stripQaMarkersForTechScan(text);
+  if (!t) return 0;
   let n = 0;
-  if (matchInternalClientToken(text)) n += 1;
-  n += scanOrionGoldenClientTextForForbiddenTokens(text).length;
-  if (/\bfinding-[a-z0-9-]+\b/i.test(text)) n += 1;
-  if (/\binventory:[a-z0-9-]+\b/i.test(text)) n += 1;
-  if (/\b(P1|P2|P3|APPENDIX|SUBJECT_MATCH)\b/.test(text)) n += 1;
+  if (matchInternalClientToken(t)) n += 1;
+  n += scanOrionGoldenClientTextForForbiddenTokens(t).length;
+  // Bare finding-/inventory- in prose (not the stripped `[finding-…]` markers).
+  if (/\bfinding-[a-z0-9-]+\b/i.test(t)) n += 1;
+  if (/\binventory:[a-z0-9-]+\b/i.test(t)) n += 1;
+  if (/\b(P1|P2|P3|APPENDIX|SUBJECT_MATCH)\b/.test(t)) n += 1;
   return n;
 }
 

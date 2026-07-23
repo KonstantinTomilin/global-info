@@ -255,7 +255,7 @@ export async function evaluateUnifiedCollectionRecoveryEligibility(input: {
     // bounce the operator back to Arsenkin (CLIENT_SUMMARY_GATE_FAILED live bug).
     const isClientSummaryGate =
       job.lastErrorCode === "CLIENT_SUMMARY_GATE_FAILED" ||
-      /SUMMARY_INCOMPLETE_SENTENCES|SUMMARY_TECHNICAL_COPY|CLIENT_INCOMPLETE_SENTENCES|CLIENT_TEXT_TRUNCATIONS|CROSS_SLIDE_DUPLICATE/i.test(
+      /SUMMARY_INCOMPLETE_SENTENCES|SUMMARY_TECHNICAL_COPY|CLIENT_INCOMPLETE_SENTENCES|CLIENT_TEXT_TRUNCATIONS|CLIENT_TECHNICAL_TOKENS|CROSS_SLIDE_DUPLICATE|MATERIALS_WITH_MULTIPLE_FULL_DISCLOSURES|CONCRETE_EXAMPLE_STRUCTURE|UNGROUNDED_CLIENT|JUNK_ADVERSE/i.test(
         `${job.lastErrorCode ?? ""} ${job.lastError ?? ""}`
       );
     if (
@@ -313,9 +313,11 @@ export async function evaluateUnifiedCollectionRecoveryEligibility(input: {
       };
     }
     // C5–C8 editorial gates with intact composite — rebuild analytics/render only.
+    // Also recover CANONICAL_PREPARE_FAILED when the message is an editorial gate
+    // (live Deripaska: CLIENT_TECHNICAL_TOKENS=36 was misclassified as terminal).
     const isClientSummaryGate =
       job.lastErrorCode === "CLIENT_SUMMARY_GATE_FAILED" ||
-      /SUMMARY_INCOMPLETE_SENTENCES|SUMMARY_TECHNICAL_COPY|CLIENT_INCOMPLETE_SENTENCES|CLIENT_TEXT_TRUNCATIONS|CROSS_SLIDE_DUPLICATE/i.test(
+      /SUMMARY_INCOMPLETE_SENTENCES|SUMMARY_TECHNICAL_COPY|CLIENT_INCOMPLETE_SENTENCES|CLIENT_TEXT_TRUNCATIONS|CLIENT_TECHNICAL_TOKENS|CROSS_SLIDE_DUPLICATE|MATERIALS_WITH_MULTIPLE_FULL_DISCLOSURES|CONCRETE_EXAMPLE_STRUCTURE|UNGROUNDED_CLIENT|JUNK_ADVERSE/i.test(
         `${job.lastErrorCode ?? ""} ${job.lastError ?? ""}`
       );
     if (

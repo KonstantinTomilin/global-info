@@ -95,7 +95,19 @@ function preferFragment(fragments: FragmentKey[]): FragmentKey {
 }
 
 function humanFragmentLabel(key: FragmentKey): string {
-  return key.replace(/_/g, " ").toLowerCase();
+  if (key === "RU_SUMMARY") return "российское резюме";
+  if (key === "UAE_SUMMARY") return "международное резюме";
+  if (key.includes("SERP") && key.startsWith("RU_")) return "российская поисковая выдача";
+  if (key.includes("SERP") && key.startsWith("UAE_")) return "международная поисковая выдача";
+  if (key.includes("IMAGES") && key.startsWith("RU_")) return "российский блок изображений";
+  if (key.includes("IMAGES") && key.startsWith("UAE_")) return "международный блок изображений";
+  if (key.includes("SUGGESTIONS")) {
+    return key.startsWith("UAE_") ? "международные подсказки поиска" : "российские подсказки поиска";
+  }
+  if (key === "EXECUTIVE_SUMMARY") return "исполнительное резюме";
+  if (key === "RISK_MATRIX") return "матрица рисков";
+  if (key === "DIGITAL_PROFILE_OVERVIEW") return "обзор цифрового профиля";
+  return "этот раздел отчёта";
 }
 
 function uniquifySentence(sentence: string, fragmentKey: FragmentKey): string {

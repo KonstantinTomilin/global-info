@@ -263,4 +263,17 @@ describe("C8 content-quality-harness", () => {
     expect(report.CEO_READY).toBe(false);
     expect(() => assertContentQualityGatesPass(report)).toThrow(/CLIENT_TECHNICAL_TOKENS/);
   });
+
+  it("ignores QA-only [finding-…] markers and domain hosts in CLIENT_TECHNICAL_TOKENS", () => {
+    const report = evaluateContentQuality({
+      caseId: "case-c8",
+      packs: [
+        themePack([
+          "По региону «Россия»: тема подтверждена на audit-it.ru и reuters.com. [finding-criminal-1]",
+          "Ключевой материал: kommersant.ru — сверить первоисточник. [finding-criminal-2]",
+        ]),
+      ],
+    });
+    expect(report.gates.CLIENT_TECHNICAL_TOKENS).toBe(0);
+  });
 });
