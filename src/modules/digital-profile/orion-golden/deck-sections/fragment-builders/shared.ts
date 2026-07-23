@@ -448,13 +448,20 @@ export function findingBlocks(
   };
 }
 
-/** Human label for C6 surface-scoped status / action copy. */
+/** Human label for C6 surface-scoped status / action copy (unique per fragment). */
 export function surfaceScopeLabel(fragmentKey?: FragmentKey): string | undefined {
   if (!fragmentKey) return undefined;
-  if (fragmentKey.includes("SERP")) return "поисковой выдаче";
+  if (fragmentKey.includes("SERP_SCREENSHOT")) return "снимку поисковой выдачи";
+  if (fragmentKey.includes("SERP")) return "таблице поисковой выдачи";
   if (fragmentKey.includes("IMAGES")) return "блоку изображений";
   if (fragmentKey.includes("SUGGESTIONS")) return "подсказкам поиска";
   if (fragmentKey.includes("RELATED")) return "связанным запросам";
+  if (fragmentKey.includes("IDENTITY") || fragmentKey.includes("WIKIPEDIA")) {
+    return "справочной карточке";
+  }
+  if (fragmentKey.includes("KNOWLEDGE") || fragmentKey.endsWith("_AI")) {
+    return "блоку ИИ-ответов";
+  }
   if (fragmentKey.endsWith("_SUMMARY") || fragmentKey.includes("SUMMARY")) {
     return "региональному резюме";
   }
@@ -464,13 +471,17 @@ export function surfaceScopeLabel(fragmentKey?: FragmentKey): string | undefined
 /**
  * Surface-local check — never paste finding.recommendedAction onto SERP/IMAGES
  * (that duplicates the regional summary whatToCheck and trips C6).
+ * Must be distinct for SERP table vs SERP screenshot (live UAE_SERP↔SCREENSHOT).
  */
 export function surfaceWhatToCheck(
   fragmentKey: FragmentKey | undefined,
   fallbackAction?: string
 ): string {
+  if (fragmentKey?.includes("SERP_SCREENSHOT")) {
+    return "Сверить выделенные на этом снимке результаты выдачи с первоисточниками.";
+  }
   if (fragmentKey?.includes("SERP")) {
-    return "Сверить выделенные на этой странице результаты выдачи с первоисточниками.";
+    return "Сверить выделенные в таблице выдачи результаты с первоисточниками.";
   }
   if (fragmentKey?.includes("IMAGES")) {
     return "Проверить сайты-источники изображений на этой странице и зафиксировать позицию по негативным кадрам.";
@@ -480,6 +491,12 @@ export function surfaceWhatToCheck(
   }
   if (fragmentKey?.includes("RELATED")) {
     return "Просмотреть связанные запросы на этой странице и сопоставить их с темами регионального резюме.";
+  }
+  if (fragmentKey?.includes("IDENTITY") || fragmentKey?.includes("WIKIPEDIA")) {
+    return "Сверить справочную карточку с профилем субъекта и подтверждёнными темами резюме.";
+  }
+  if (fragmentKey?.includes("KNOWLEDGE") || fragmentKey?.endsWith("_AI")) {
+    return "Сверить формулировки ИИ-ответов на этой странице с подтверждёнными темами резюме.";
   }
   return fallbackAction ?? "Мониторить изменения выдачи.";
 }

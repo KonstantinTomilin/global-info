@@ -36,6 +36,7 @@ import {
   sourceLine,
   splitClientParagraphs,
   statusLine,
+  surfaceWhatToCheck,
   uniqueRefs,
   visualSlide,
   withContinuations,
@@ -284,10 +285,7 @@ export function buildSerpScreenshotFragment(
           engineNote,
         320
       ),
-      whatToCheck: clampClientText(
-        "Сверить выделенные на этом снимке результаты выдачи с первоисточниками.",
-        220
-      ),
+      whatToCheck: clampClientText(surfaceWhatToCheck(key), 220),
       statusNote: statusLine(top, { fragmentKey: key }),
       sourceNote,
       // Every red highlight on the snapshot is explained by the finding whose

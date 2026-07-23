@@ -286,6 +286,72 @@ describe("C6 cross-slide disclosure", () => {
     ).not.toThrow();
   });
 
+  it("repairs SERP↔screenshot and IDENTITY↔AI collisions with distinct copy", () => {
+    const packs = [
+      {
+        fragmentKey: "UAE_SERP",
+        slides: [
+          {
+            content: {
+              whatToCheck:
+                "Сверить выделенные на этой странице результаты выдачи с первоисточниками.",
+              statusNote:
+                "Статус: состав страницы описан по строкам таблицы; отдельного тематического вывода нет.",
+            },
+          },
+        ],
+      },
+      {
+        fragmentKey: "UAE_SERP_SCREENSHOT",
+        slides: [
+          {
+            content: {
+              whatToCheck:
+                "Сверить выделенные на этой странице результаты выдачи с первоисточниками.",
+              statusNote:
+                "Статус: состав страницы описан по строкам таблицы; отдельного тематического вывода нет.",
+            },
+          },
+        ],
+      },
+      {
+        fragmentKey: "UAE_IDENTITY_WIKIPEDIA",
+        slides: [
+          {
+            content: {
+              statusNote:
+                "Статус: состав страницы описан по строкам таблицы; отдельного тематического вывода нет.",
+            },
+          },
+        ],
+      },
+      {
+        fragmentKey: "UAE_KNOWLEDGE_AI",
+        slides: [
+          {
+            content: {
+              statusNote:
+                "Статус: состав страницы описан по строкам таблицы; отдельного тематического вывода нет.",
+            },
+          },
+        ],
+      },
+    ] as unknown as SectionPackV2[];
+
+    expect(inspectCrossSlideDuplicateSentences(packs).CROSS_SLIDE_DUPLICATE_SENTENCES).toBeGreaterThan(
+      0
+    );
+    const repair = repairCrossSlideDuplicateCopy(packs);
+    expect(repair.after).toBe(0);
+    expect(packs[0]!.slides[0]!.content.whatToCheck).toMatch(/таблице выдачи/u);
+    expect(packs[1]!.slides[0]!.content.whatToCheck).toMatch(/снимке/u);
+    expect(packs[0]!.slides[0]!.content.whatToCheck).not.toEqual(
+      packs[1]!.slides[0]!.content.whatToCheck
+    );
+    expect(packs[2]!.slides[0]!.content.statusNote).toMatch(/справочной карточке/u);
+    expect(packs[3]!.slides[0]!.content.statusNote).toMatch(/ИИ-ответов/u);
+  });
+
   it("repairs live-style GPT/boilerplate duplicates before the C6 gate", () => {
     const action =
       "Проверить статусы дел по судебным картотекам и официальным источникам; собрать документы о прекращении или исходе.";
@@ -351,7 +417,7 @@ describe("C6 cross-slide disclosure", () => {
     expect(packs[0]!.slides[0]!.content.bullets![0]).toMatch(/По региону «Россия»/u);
     expect(packs[1]!.slides[0]!.content.bullets![0]).toMatch(/По региону «ОАЭ/u);
     expect(packs[2]!.slides[0]!.content.statusNote).toMatch(/блоку изображений/u);
-    expect(packs[3]!.slides[0]!.content.statusNote).toMatch(/поисковой выдаче/u);
+    expect(packs[3]!.slides[0]!.content.statusNote).toMatch(/таблице поисковой выдачи/u);
     expect(packs[3]!.slides[0]!.content.whatToCheck).not.toEqual(action);
     expect(() =>
       assertCrossSlideDedupeGatesPass({
@@ -374,12 +440,14 @@ describe("C6 cross-slide disclosure", () => {
     const serpStatus = statusLine(f, { fragmentKey: "RU_SERP" });
     const imagesStatus = statusLine(f, { fragmentKey: "RU_IMAGES" });
     expect(serpStatus).not.toEqual(imagesStatus);
-    expect(serpStatus).toMatch(/поисковой выдаче/u);
+    expect(serpStatus).toMatch(/таблице поисковой выдачи/u);
     expect(imagesStatus).toMatch(/блоку изображений/u);
 
     const serpCheck = surfaceWhatToCheck("RU_SERP", f.recommendedAction);
+    const shotCheck = surfaceWhatToCheck("RU_SERP_SCREENSHOT", f.recommendedAction);
     const imagesCheck = surfaceWhatToCheck("RU_IMAGES", f.recommendedAction);
     expect(serpCheck).not.toEqual(f.recommendedAction);
+    expect(shotCheck).not.toEqual(serpCheck);
     expect(imagesCheck).not.toEqual(f.recommendedAction);
     expect(serpCheck).not.toEqual(imagesCheck);
 

@@ -31,20 +31,16 @@ function fingerprint(sentence: string): string {
     .trim();
 }
 
-function splitSentences(text: string): string[] {
-  return text
-    .replace(/\s*\[finding-[^\]]+\]\s*/giu, " ")
-    .split(/(?<=[.!?…])\s+/u)
-    .map((s) => s.replace(/\s+/gu, " ").trim())
-    .filter((s) => s.length >= MIN_SENTENCE_LEN);
-}
-
 function isSurfaceFragment(key: FragmentKey): boolean {
   return (
     key.includes("SERP") ||
     key.includes("IMAGES") ||
     key.includes("SUGGESTIONS") ||
-    key.includes("RELATED")
+    key.includes("RELATED") ||
+    key.includes("IDENTITY") ||
+    key.includes("WIKIPEDIA") ||
+    key.includes("KNOWLEDGE") ||
+    key.endsWith("_AI")
   );
 }
 
@@ -57,7 +53,7 @@ function stampStatusNote(note: string, scope: string): string {
     const rest = note.trim();
     return `Статус по ${scope}: ${rest.charAt(0).toLowerCase()}${rest.slice(1)}`;
   }
-  if (/уровень внимания/iu.test(note)) {
+  if (/уровень внимания|состав страницы описан/iu.test(note)) {
     return `Статус по ${scope}: ${note.replace(/^Статус\s*:\s*/u, "").trim()}`;
   }
   return note;
@@ -85,8 +81,14 @@ function preferFragment(fragments: FragmentKey[]): FragmentKey {
     "DIGITAL_PROFILE_OVERVIEW",
     "RU_SERP",
     "UAE_SERP",
+    "RU_SERP_SCREENSHOT",
+    "UAE_SERP_SCREENSHOT",
     "RU_IMAGES",
     "UAE_IMAGES",
+    "RU_IDENTITY_WIKIPEDIA",
+    "UAE_IDENTITY_WIKIPEDIA",
+    "RU_KNOWLEDGE_AI",
+    "UAE_KNOWLEDGE_AI",
   ];
   for (const key of order) {
     if (fragments.includes(key)) return key;
@@ -94,24 +96,40 @@ function preferFragment(fragments: FragmentKey[]): FragmentKey {
   return [...fragments].sort()[0]!;
 }
 
+/** Must be unique per FragmentKey — shared fallbacks re-create C6 dups. */
 function humanFragmentLabel(key: FragmentKey): string {
-  if (key === "RU_SUMMARY") return "российское резюме";
-  if (key === "UAE_SUMMARY") return "международное резюме";
-  if (key.includes("SERP") && key.startsWith("RU_")) return "российская поисковая выдача";
-  if (key.includes("SERP") && key.startsWith("UAE_")) return "международная поисковая выдача";
-  if (key.includes("IMAGES") && key.startsWith("RU_")) return "российский блок изображений";
-  if (key.includes("IMAGES") && key.startsWith("UAE_")) return "международный блок изображений";
-  if (key.includes("SUGGESTIONS")) {
-    return key.startsWith("UAE_") ? "международные подсказки поиска" : "российские подсказки поиска";
-  }
-  if (key === "EXECUTIVE_SUMMARY") return "исполнительное резюме";
-  if (key === "RISK_MATRIX") return "матрица рисков";
-  if (key === "DIGITAL_PROFILE_OVERVIEW") return "обзор цифрового профиля";
-  return "этот раздел отчёта";
+  const labels: Partial<Record<FragmentKey, string>> = {
+    RU_SUMMARY: "российское резюме",
+    UAE_SUMMARY: "международное резюме",
+    RU_SERP: "таблица выдачи (Россия)",
+    UAE_SERP: "таблица выдачи (международный поиск)",
+    RU_SERP_SCREENSHOT: "снимок выдачи (Россия)",
+    UAE_SERP_SCREENSHOT: "снимок выдачи (международный поиск)",
+    RU_IMAGES: "изображения (Россия)",
+    UAE_IMAGES: "изображения (международный поиск)",
+    RU_SUGGESTIONS: "подсказки поиска (Россия)",
+    UAE_SUGGESTIONS: "подсказки поиска (международный поиск)",
+    RU_RELATED: "связанные запросы (Россия)",
+    UAE_RELATED: "связанные запросы (международный поиск)",
+    RU_IDENTITY_WIKIPEDIA: "справочная карточка (Россия)",
+    UAE_IDENTITY_WIKIPEDIA: "справочная карточка (международный поиск)",
+    RU_KNOWLEDGE_AI: "ИИ-ответы (Россия)",
+    UAE_KNOWLEDGE_AI: "ИИ-ответы (международный поиск)",
+    EXECUTIVE_SUMMARY: "исполнительное резюме",
+    RISK_MATRIX: "матрица рисков",
+    DIGITAL_PROFILE_OVERVIEW: "обзор цифрового профиля",
+    FRONT_MATTER_MAIN: "титульный блок",
+    COMPLIANCE_MAIN: "комплаенс",
+    APPENDIX_MAIN: "приложение",
+  };
+  return labels[key] ?? `раздел ${key.replace(/_/g, " ").toLowerCase()}`;
 }
 
 function uniquifySentence(sentence: string, fragmentKey: FragmentKey): string {
-  const base = sentence.replace(/\s*[.!?…]\s*$/u, "").trim();
+  const base = sentence
+    .replace(/\s*—\s*уточнение для раздела\s*«[^»]+»\s*\.?$/u, "")
+    .replace(/\s*[.!?…]\s*$/u, "")
+    .trim();
   return `${base} — уточнение для раздела «${humanFragmentLabel(fragmentKey)}».`;
 }
 
@@ -164,18 +182,8 @@ function rewriteBody(
   return n;
 }
 
-/**
- * Mutates packs in place. Safe to run after GPT copy/editor and before
- * assertCrossSlideDedupeGatesPass.
- */
-export function repairCrossSlideDuplicateCopy(packs: SectionPackV2[]): {
-  repairedFields: number;
-  before: number;
-  after: number;
-} {
-  const before = inspectCrossSlideDuplicateSentences(packs).CROSS_SLIDE_DUPLICATE_SENTENCES;
+function stampPacks(packs: SectionPackV2[]): number {
   let repairedFields = 0;
-
   for (const pack of packs) {
     const key = pack.fragmentKey;
     const scope = surfaceScopeLabel(key);
@@ -218,8 +226,12 @@ export function repairCrossSlideDuplicateCopy(packs: SectionPackV2[]): {
       }
     }
   }
+  return repairedFields;
+}
 
-  let report = inspectCrossSlideDuplicateSentences(packs);
+function uniquifyPass(packs: SectionPackV2[]): number {
+  let repairedFields = 0;
+  const report = inspectCrossSlideDuplicateSentences(packs);
   for (const dup of report.duplicates) {
     const keep = preferFragment(dup.fragments);
     for (const frag of dup.fragments) {
@@ -231,12 +243,33 @@ export function repairCrossSlideDuplicateCopy(packs: SectionPackV2[]): {
       }
     }
   }
+  return repairedFields;
+}
 
-  report = inspectCrossSlideDuplicateSentences(packs);
+/**
+ * Mutates packs in place. Safe to run after GPT copy/editor and before
+ * assertCrossSlideDedupeGatesPass.
+ */
+export function repairCrossSlideDuplicateCopy(packs: SectionPackV2[]): {
+  repairedFields: number;
+  before: number;
+  after: number;
+} {
+  const before = inspectCrossSlideDuplicateSentences(packs).CROSS_SLIDE_DUPLICATE_SENTENCES;
+  let repairedFields = stampPacks(packs);
+
+  // Up to 3 uniquify passes: shared fallbacks previously left secondary
+  // fragments still colliding with each other (SERP↔SCREENSHOT, IDENTITY↔AI).
+  for (let i = 0; i < 3; i += 1) {
+    const remaining = inspectCrossSlideDuplicateSentences(packs).CROSS_SLIDE_DUPLICATE_SENTENCES;
+    if (remaining === 0) break;
+    repairedFields += uniquifyPass(packs);
+  }
+
   return {
     repairedFields,
     before,
-    after: report.CROSS_SLIDE_DUPLICATE_SENTENCES,
+    after: inspectCrossSlideDuplicateSentences(packs).CROSS_SLIDE_DUPLICATE_SENTENCES,
   };
 }
 
