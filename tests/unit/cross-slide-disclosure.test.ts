@@ -11,6 +11,8 @@ import {
   buildPageEvidenceView,
   pageFindingBlocks,
   resolveDisclosureClaimText,
+  statusLine,
+  surfaceWhatToCheck,
 } from "../../src/modules/digital-profile/orion-golden/deck-sections/fragment-builders/shared";
 import type { ComposedClientSummary } from "../../src/modules/digital-profile/orion-golden/contracts/composed-client-summary";
 import type { Finding } from "../../src/modules/digital-profile/orion-golden/contracts/finding";
@@ -122,8 +124,13 @@ describe("C6 cross-slide disclosure", () => {
       m.fullText
     );
     expect(resolveDisclosureClaimText(f, "RISK_MATRIX", extras)).toBe(m.matrixText);
-    expect(resolveDisclosureClaimText(f, "RU_SERP", extras)).toBe(m.surfaceAngles.serp);
+    const ruSerp = resolveDisclosureClaimText(f, "RU_SERP", extras);
+    const uaeSerp = resolveDisclosureClaimText(f, "UAE_SERP", extras);
+    expect(ruSerp).toMatch(/российск/u);
+    expect(uaeSerp).toMatch(/международн/u);
+    expect(ruSerp).not.toEqual(uaeSerp);
     // Page-scoped SERP QA: surface angle must not embed concrete domains.
+    expect(ruSerp).not.toMatch(/\b[\w-]+\.[\w.-]+\b/u);
     expect(m.surfaceAngles.serp).not.toMatch(/\b[\w-]+\.[\w.-]+\b/u);
   });
 
@@ -276,6 +283,66 @@ describe("C6 cross-slide disclosure", () => {
         MATERIALS_WITH_MULTIPLE_FULL_DISCLOSURES: 0,
       })
     ).not.toThrow();
+  });
+
+  it("scopes status and checks so SERP/IMAGES/regional summaries do not share sentences", () => {
+    const f = finding({
+      findingId: "finding-criminal",
+      theme: "Криминальные / судебные материалы",
+      recommendedAction:
+        "Проверить статусы дел по судебным картотекам и официальным источникам; собрать документы о прекращении или исходе.",
+      confidence: 0.9,
+      riskLevel: "critical",
+    });
+    const serpStatus = statusLine(f, { fragmentKey: "RU_SERP" });
+    const imagesStatus = statusLine(f, { fragmentKey: "RU_IMAGES" });
+    expect(serpStatus).not.toEqual(imagesStatus);
+    expect(serpStatus).toMatch(/поисковой выдаче/u);
+    expect(imagesStatus).toMatch(/блоку изображений/u);
+
+    const serpCheck = surfaceWhatToCheck("RU_SERP", f.recommendedAction);
+    const imagesCheck = surfaceWhatToCheck("RU_IMAGES", f.recommendedAction);
+    expect(serpCheck).not.toEqual(f.recommendedAction);
+    expect(imagesCheck).not.toEqual(f.recommendedAction);
+    expect(serpCheck).not.toEqual(imagesCheck);
+
+    const packs = [
+      {
+        fragmentKey: "RU_SUMMARY",
+        slides: [
+          {
+            content: {
+              bullets: [
+                "По региону «Россия»: материалы со статусом «вероятно о субъекте» (37) пока не включаем в подтверждённый итог до уточнения идентификации.",
+              ],
+              whatToCheck: `В разделе «Россия»: ${f.recommendedAction}`,
+            },
+          },
+        ],
+      },
+      {
+        fragmentKey: "UAE_SUMMARY",
+        slides: [
+          {
+            content: {
+              bullets: [
+                "По региону «Международный поиск»: материалы со статусом «вероятно о субъекте» (37) пока не включаем в подтверждённый итог до уточнения идентификации.",
+              ],
+              whatToCheck: `В разделе «Международный поиск»: ${f.recommendedAction}`,
+            },
+          },
+        ],
+      },
+      {
+        fragmentKey: "RU_SERP",
+        slides: [{ content: { statusNote: serpStatus, whatToCheck: serpCheck } }],
+      },
+      {
+        fragmentKey: "RU_IMAGES",
+        slides: [{ content: { statusNote: imagesStatus, whatToCheck: imagesCheck } }],
+      },
+    ] as unknown as SectionPackV2[];
+    expect(inspectCrossSlideDuplicateSentences(packs).CROSS_SLIDE_DUPLICATE_SENTENCES).toBe(0);
   });
 
   it("allows shared brief among overview/executive but not leak into RU_SUMMARY", () => {

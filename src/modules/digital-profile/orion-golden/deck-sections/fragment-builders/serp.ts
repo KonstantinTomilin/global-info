@@ -285,10 +285,10 @@ export function buildSerpScreenshotFragment(
         320
       ),
       whatToCheck: clampClientText(
-        top?.recommendedAction ?? "Проверить первоисточники выделенных результатов.",
+        "Сверить выделенные на этом снимке результаты выдачи с первоисточниками.",
         220
       ),
-      statusNote: statusLine(top),
+      statusNote: statusLine(top, { fragmentKey: key }),
       sourceNote,
       // Every red highlight on the snapshot is explained by the finding whose
       // evidence that row is — strictly page-scoped.

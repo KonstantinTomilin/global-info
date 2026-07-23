@@ -122,7 +122,7 @@ export function buildRegionalSummaryFragment(
             ...(uncategorized ? [uncategorized.bullet] : []),
             ...(likely > 0
               ? [
-                  `Материалы, вероятно относящиеся к субъекту: ${likely} — не входят в подтверждённые выводы, пока принадлежность не уточнена.`,
+                  `По региону «${regionLabel}»: материалы со статусом «вероятно о субъекте» (${likely}) не входят в подтверждённые выводы, пока принадлежность не уточнена.`,
                 ]
               : []),
             ...(ambiguous > 0
@@ -186,11 +186,12 @@ export function buildRegionalSummaryFragment(
       ...(uncategorized ? [uncategorized.bullet] : []),
       ...(likelyN > 0
         ? [
-            `Материалы, вероятно относящиеся к субъекту: ${likelyN} — пока не включаем в подтверждённый итог до уточнения идентификации.`,
+            `По региону «${regionLabel}»: материалы со статусом «вероятно о субъекте» (${likelyN}) пока не включаем в подтверждённый итог до уточнения идентификации.`,
           ]
         : []),
     ];
     const materialWord = pluralRu(materialCount, "материал", "материала", "материалов");
+    const regionalAction = findingBlocks(scoped, undefined, extras).whatToCheck;
     const base = makeSlotSlide({
       slot: summarySlot,
       sectionId,
@@ -225,7 +226,10 @@ export function buildRegionalSummaryFragment(
         bullets,
         // Keep action; omit whatWasFound/whyItMatters from findingBlocks so the
         // page stays «итог → темы → действие», not a second technical essay.
-        whatToCheck: findingBlocks(scoped, undefined, extras).whatToCheck,
+        // C6 — region prefix so RU_SUMMARY / UAE_SUMMARY never share one sentence.
+        whatToCheck: regionalAction
+          ? `В разделе «${regionLabel}»: ${regionalAction}`
+          : undefined,
         sourceNote: sourceLine(scoped, extras),
       },
       evidenceRefs: [

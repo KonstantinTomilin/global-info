@@ -448,13 +448,58 @@ export function findingBlocks(
   };
 }
 
+/** Human label for C6 surface-scoped status / action copy. */
+export function surfaceScopeLabel(fragmentKey?: FragmentKey): string | undefined {
+  if (!fragmentKey) return undefined;
+  if (fragmentKey.includes("SERP")) return "поисковой выдаче";
+  if (fragmentKey.includes("IMAGES")) return "блоку изображений";
+  if (fragmentKey.includes("SUGGESTIONS")) return "подсказкам поиска";
+  if (fragmentKey.includes("RELATED")) return "связанным запросам";
+  if (fragmentKey.endsWith("_SUMMARY") || fragmentKey.includes("SUMMARY")) {
+    return "региональному резюме";
+  }
+  return undefined;
+}
+
+/**
+ * Surface-local check — never paste finding.recommendedAction onto SERP/IMAGES
+ * (that duplicates the regional summary whatToCheck and trips C6).
+ */
+export function surfaceWhatToCheck(
+  fragmentKey: FragmentKey | undefined,
+  fallbackAction?: string
+): string {
+  if (fragmentKey?.includes("SERP")) {
+    return "Сверить выделенные на этой странице результаты выдачи с первоисточниками.";
+  }
+  if (fragmentKey?.includes("IMAGES")) {
+    return "Проверить сайты-источники изображений на этой странице и зафиксировать позицию по негативным кадрам.";
+  }
+  if (fragmentKey?.includes("SUGGESTIONS")) {
+    return "Оценить формулировки подсказок на этой странице и сверить с подтверждёнными темами в резюме.";
+  }
+  if (fragmentKey?.includes("RELATED")) {
+    return "Просмотреть связанные запросы на этой странице и сопоставить их с темами регионального резюме.";
+  }
+  return fallbackAction ?? "Мониторить изменения выдачи.";
+}
+
 /**
  * Confidence/status line: confirmed theme vs preliminary signal + level.
  * PDF-36 D.4 — human phrasing instead of the telegraph string
  * «Статус: …; уровень: …; уверенность 90%.» repeated verbatim across pages.
+ * C6 — optional surface scope so RU_SERP / RU_IMAGES do not share one sentence.
  */
-export function statusLine(top: Finding | undefined): string {
-  if (!top) return "Статус: по данной поверхности выводов о рисках нет.";
+export function statusLine(
+  top: Finding | undefined,
+  opts?: { surfaceLabel?: string; fragmentKey?: FragmentKey }
+): string {
+  const scope = opts?.surfaceLabel?.trim() || surfaceScopeLabel(opts?.fragmentKey);
+  if (!top) {
+    return scope
+      ? `Статус по ${scope}: выводов о рисках нет.`
+      : "Статус: по данной поверхности выводов о рисках нет.";
+  }
   const kind =
     top.confidence >= 0.7 ? "тема подтверждена" : "сигнал предварительный";
   const conf =
@@ -463,7 +508,8 @@ export function statusLine(top: Finding | undefined): string {
       : top.confidence >= 0.6
         ? "достоверность оценки уверенная"
         : "оценка требует подтверждения";
-  return `Статус: ${kind}, уровень внимания — ${riskLabel(top.riskLevel).toLowerCase()}; ${conf}.`;
+  const head = scope ? `Статус по ${scope}` : "Статус";
+  return `${head}: ${kind}, уровень внимания — ${riskLabel(top.riskLevel).toLowerCase()}; ${conf}.`;
 }
 
 export function normalizeEvidenceUrl(url: string | undefined): string {
@@ -612,7 +658,8 @@ export function composePageRowComposition(
 export function pageRowCompositionBlocks(
   composition: PageRowComposition,
   view: PageEvidenceView,
-  extraCheck?: string
+  extraCheck?: string,
+  fragmentKey?: FragmentKey
 ): Partial<SlideBody> {
   const resultWord = pluralRu(
     composition.shown,
@@ -623,6 +670,8 @@ export function pageRowCompositionBlocks(
   const domainsNote = composition.topDomains.length
     ? `; преобладающие источники: ${composition.topDomains.slice(0, 3).join(", ")}`
     : "";
+  const scope = surfaceScopeLabel(fragmentKey);
+  const statusHead = scope ? `Статус по ${scope}` : "Статус";
   return {
     whatWasFound: clampClientText(
       `Показано ${composition.shown} ${resultWord}; из них о субъекте — ${composition.subjectMatch}, вероятно о субъекте — ${composition.likelySubject}, негативных заголовков — ${composition.adverseHeadlines}${domainsNote}.`,
@@ -637,16 +686,19 @@ export function pageRowCompositionBlocks(
       320
     ),
     whatToCheck: clampClientText(
-      extraCheck ??
-        (composition.subjectMatch > 0 || composition.likelySubject > 0
-          ? "Сверить заголовки и домены с профилем субъекта; уточнить принадлежность строк со статусом «Вероятно»."
-          : "Мониторить изменения выдачи."),
+      surfaceWhatToCheck(
+        fragmentKey,
+        extraCheck ??
+          (composition.subjectMatch > 0 || composition.likelySubject > 0
+            ? "Сверить заголовки и домены с профилем субъекта; уточнить принадлежность строк со статусом «Вероятно»."
+            : "Мониторить изменения выдачи.")
+      ),
       220
     ),
     statusNote:
       composition.adverseHeadlines > 0
-        ? `Статус: на странице ${composition.adverseHeadlines} негативных заголовков; подтверждённая тема по этим строкам не выделена.`
-        : "Статус: состав страницы описан по строкам таблицы; отдельного тематического вывода нет.",
+        ? `${statusHead}: на странице ${composition.adverseHeadlines} негативных заголовков; подтверждённая тема по этим строкам не выделена.`
+        : `${statusHead}: состав страницы описан по строкам таблицы; отдельного тематического вывода нет.`,
     sourceNote: pageSourceLine(view),
   };
 }
@@ -693,15 +745,15 @@ export function pageFindingBlocks(
         : pageScopedConclusion(top, view),
       whyItMatters: clampClientText(
         adverse.length
-          ? `Материалы этой страницы затрагивают тем повышенного внимания: ${adverse.length}. Они видны при первичной проверке субъекта.`
-          : "Показанные на странице материалы не формируют негативного фона вокруг субъекта.",
+          ? `На этой странице (${surfaceScopeLabel(fragmentKey) ?? "поверхность"}) тем повышенного внимания: ${adverse.length}; они видны при первичной проверке субъекта.`
+          : `Показанные на этой странице (${surfaceScopeLabel(fragmentKey) ?? "поверхность"}) материалы не формируют негативного фона вокруг субъекта.`,
         320
       ),
       whatToCheck: clampClientText(
-        top.recommendedAction ?? extraCheck ?? "Мониторить изменения выдачи.",
+        surfaceWhatToCheck(fragmentKey, extraCheck ?? top.recommendedAction),
         220
       ),
-      statusNote: statusLine(top),
+      statusNote: statusLine(top, { fragmentKey }),
       sourceNote: pageSourceLine(view),
     };
   }
@@ -709,21 +761,22 @@ export function pageFindingBlocks(
     return pageRowCompositionBlocks(
       composePageRowComposition(scoped, view.refs),
       view,
-      extraCheck
+      extraCheck,
+      fragmentKey
     );
   }
   return {
     whatWasFound:
       "Существенных материалов среди показанных на этой странице элементов не обнаружено.",
     whyItMatters: clampClientText(
-      "Показанные на странице материалы не формируют негативного фона вокруг субъекта.",
+      `Показанные на этой странице (${surfaceScopeLabel(fragmentKey) ?? "поверхность"}) материалы не формируют негативного фона вокруг субъекта.`,
       320
     ),
     whatToCheck: clampClientText(
-      extraCheck ?? "Мониторить изменения выдачи.",
+      surfaceWhatToCheck(fragmentKey, extraCheck),
       220
     ),
-    statusNote: statusLine(undefined),
+    statusNote: statusLine(undefined, { fragmentKey }),
     sourceNote: pageSourceLine(view),
   };
 }
@@ -953,19 +1006,30 @@ export function resolveDisclosureClaimText(
     // Matrix is never the full-disclosure owner and must not clone exec brief.
     return row.matrixText;
   }
+  const regionBit = fragmentKey.startsWith("UAE_") ? "международн" : "российск";
   if (
     fragmentKey === "RU_SERP" ||
     fragmentKey === "UAE_SERP" ||
     fragmentKey === "RU_SERP_SCREENSHOT" ||
     fragmentKey === "UAE_SERP_SCREENSHOT"
   ) {
-    return row.surfaceAngles.serp;
+    // Region-specific: shared serp angle previously duplicated RU_SERP↔UAE_SERP.
+    return (
+      `В ${regionBit}ой поисковой выдаче по теме «${row.themeLabel}» видны релевантные результаты; ` +
+      `полный разбор — в ${regionBit}ом резюме.`
+    );
   }
   if (fragmentKey === "RU_IMAGES" || fragmentKey === "UAE_IMAGES") {
-    return row.surfaceAngles.images;
+    return (
+      `В ${regionBit}ом блоке изображений по теме «${row.themeLabel}» показаны визуальные материалы, связанные с сюжетом; ` +
+      `смысл риска раскрыт в ${regionBit}ом резюме, не в подписи к картинке.`
+    );
   }
   if (fragmentKey === "RU_SUGGESTIONS" || fragmentKey === "UAE_SUGGESTIONS") {
-    return row.surfaceAngles.suggestions;
+    return (
+      `Подсказки ${regionBit}ого поиска по теме «${row.themeLabel}» отражают, как запрос формулируют пользователи; ` +
+      `содержательный разбор публикаций — в ${regionBit}ом резюме.`
+    );
   }
   return row.briefText;
 }
