@@ -186,8 +186,9 @@ export const DECK_TEMPLATE_REGISTRY: Record<DeckTemplateId, DeckTemplateDef> = {
     staticBlocks: ["Обзор региона", ...FINDING_BLOCKS],
     methodologyNote:
       "Метрики рассчитаны только по материалам, отнесённым к проверяемому лицу; совпадения по однофамильцам исключены из KPI.",
-    // PDF-46 I.3 — with KPI chrome only 2 multi-line theme cards fit above
-    // the footer; overflow continues on the next page (more pages OK).
+    // PDF-46 I.3 — with KPI chrome at most 2 short (~300ch) theme cards fit;
+    // C6 full-disclosure cards are density-paginated to 1/page in
+    // resolveMaxThemeBlocksPerSlide (more continuation pages OK).
     maxBulletsPerSlide: 2,
     maxTableRowsPerSlide: 0,
     layout: layout("two-column", { narrativeCharBudget: 700, itemCharBudget: 860 }),

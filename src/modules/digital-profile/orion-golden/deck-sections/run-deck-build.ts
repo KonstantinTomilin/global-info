@@ -27,6 +27,7 @@ import { repairCrossSlideDuplicateCopy } from "./cross-slide-dedupe-repair";
 import {
   assertSemanticPaginationGatesPass,
   countClientTextTruncations,
+  repaginateThemeBearingPacks,
 } from "./semantic-summary-pagination";
 import {
   assertContentQualityGatesPass,
@@ -101,6 +102,9 @@ export function runDeckBuild(input: {
 
   // 1. Independent SectionPacks (cache-aware) — or the prebuilt set.
   const packs = input.prebuiltPacks ?? buildAllSections(ctx);
+  // C7 geometry safety: GPT/stale packs can leave 3+ long theme cards on one
+  // regional metrics page → Python RENDER bullet overflow (live Deripaska p10).
+  repaginateThemeBearingPacks(packs);
 
   // 2. Section-level QA before assembly.
   const validationReports = new Map<FragmentKey, SectionValidationReport>();

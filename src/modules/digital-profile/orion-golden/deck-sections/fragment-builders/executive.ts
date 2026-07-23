@@ -41,6 +41,7 @@ import {
   uniqueRefs,
   verdictClientLabel,
 } from "./shared";
+import { paginateThemeBlocks } from "../semantic-summary-pagination";
 
 /**
  * §7.2 — compact freshness + change line for surfaces that render narrative/bullets
@@ -753,44 +754,44 @@ export function buildDigitalProfileOverviewFragment(
       const body = themedClaim(f, extras, "DIGITAL_PROFILE_OVERVIEW");
       return bulletWithFindingId(body, f.findingId, 520);
     });
+  const base = makeSlotSlide({
+    slot,
+    sectionId,
+    content: {
+      narrative: `По собранным источникам: ${s.compositeCount} материалов из ${regions.length} региональных контуров (${regions
+        .map(([r, n]) => `${r}: ${n}`)
+        .join(", ")}). Принадлежность каждого материала к проверяемому лицу проверена.`,
+      // Labels fit the KPI card budget (28 chars) without clipping.
+      kpis: [
+        { label: "Материалов проанализировано", value: String(s.compositeCount), tone: "neutral" },
+        { label: "Связаны с проверяемым лицом", value: String(s.subjectMatchCount), tone: "good" },
+        {
+          label: "Вероятно о субъекте",
+          value: String(s.likelySubjectCount ?? 0),
+          tone: "warn",
+        },
+        { label: "Требуют идентификации", value: String(s.ambiguousCount), tone: "warn" },
+        { label: "Относятся к другим лицам", value: String(s.otherSubjectCount), tone: "warn" },
+        { label: "Тем повышенного внимания", value: String(s.adverseFindingCount), tone: "risk" },
+        { label: "Региональные контуры", value: regions.map(([r]) => r).join(" · "), tone: "accent" },
+      ],
+      bullets: adverseThemes,
+      whatToCheck:
+        "Детализация каждой темы повышенного внимания приведена в матрице рисков и региональных разделах.",
+      sourceNote: sourceLine(scoped),
+    },
+    evidenceRefs: [],
+    findingIds: scoped.findings.map((f) => f.findingId),
+    metrics: {
+      compositeCount: s.compositeCount,
+      subjectMatchCount: s.subjectMatchCount,
+      likelySubjectCount: s.likelySubjectCount ?? 0,
+      adverseFindingCount: s.adverseFindingCount,
+    },
+  });
+  // Same metrics-dashboard chrome as regional summary — density-aware C7 pages.
   return {
-    slides: [
-      makeSlotSlide({
-        slot,
-        sectionId,
-        content: {
-          narrative: `По собранным источникам: ${s.compositeCount} материалов из ${regions.length} региональных контуров (${regions
-            .map(([r, n]) => `${r}: ${n}`)
-            .join(", ")}). Принадлежность каждого материала к проверяемому лицу проверена.`,
-          // Labels fit the KPI card budget (28 chars) without clipping.
-          kpis: [
-            { label: "Материалов проанализировано", value: String(s.compositeCount), tone: "neutral" },
-            { label: "Связаны с проверяемым лицом", value: String(s.subjectMatchCount), tone: "good" },
-            {
-              label: "Вероятно о субъекте",
-              value: String(s.likelySubjectCount ?? 0),
-              tone: "warn",
-            },
-            { label: "Требуют идентификации", value: String(s.ambiguousCount), tone: "warn" },
-            { label: "Относятся к другим лицам", value: String(s.otherSubjectCount), tone: "warn" },
-            { label: "Тем повышенного внимания", value: String(s.adverseFindingCount), tone: "risk" },
-            { label: "Региональные контуры", value: regions.map(([r]) => r).join(" · "), tone: "accent" },
-          ],
-          bullets: adverseThemes,
-          whatToCheck:
-            "Детализация каждой темы повышенного внимания приведена в матрице рисков и региональных разделах.",
-          sourceNote: sourceLine(scoped),
-        },
-        evidenceRefs: [],
-        findingIds: scoped.findings.map((f) => f.findingId),
-        metrics: {
-          compositeCount: s.compositeCount,
-          subjectMatchCount: s.subjectMatchCount,
-          likelySubjectCount: s.likelySubjectCount ?? 0,
-          adverseFindingCount: s.adverseFindingCount,
-        },
-      }),
-    ],
+    slides: paginateThemeBlocks({ base, templateId: "regional-summary" }).slides,
     status: "READY",
   };
 }

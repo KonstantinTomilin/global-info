@@ -65,20 +65,47 @@ export function countClientTextTruncations(texts: string[]): {
 }
 
 /**
+ * How many theme cards fit above the footer for this chrome density.
+ * Registry maxBulletsPerSlide assumes ~300-char cards; C6 full-disclosure
+ * bullets (600–1200+) with KPI scorecards overflow (live RENDER p10:
+ * «3 theme block(s) need … EMU but only … available»).
+ */
+export function resolveMaxThemeBlocksPerSlide(input: {
+  bullets: string[];
+  templateId: DeckTemplateId;
+  hasKpiChrome?: boolean;
+}): number {
+  const registryMax = DECK_TEMPLATE_REGISTRY[input.templateId]?.maxBulletsPerSlide ?? 2;
+  if (registryMax <= 0) return 1;
+  const maxLen = Math.max(0, ...input.bullets.map((b) => String(b ?? "").length));
+  const hasKpi = Boolean(input.hasKpiChrome);
+  if (input.templateId === "regional-summary") {
+    if (hasKpi && maxLen >= 360) return 1;
+    if (maxLen >= 700) return 1;
+    if (hasKpi) return Math.min(2, registryMax);
+  }
+  return registryMax;
+}
+
+/**
  * Paginate a base slide by atomic theme bullets (and optional narrative/table).
  * Unlike withContinuations, bullet packing never splits a single bullet string.
  */
 export function paginateThemeBlocks(input: {
   base: SlideContentContract;
   templateId: DeckTemplateId;
-  /** Override max theme bullets per page (defaults to template registry). */
+  /** Override max theme bullets per page (defaults to density-aware registry). */
   maxThemeBlocksPerSlide?: number;
 }): { slides: SlideContentContract[]; report: SemanticPaginationReport } {
   const tpl = DECK_TEMPLATE_REGISTRY[input.templateId];
+  const bullets = input.base.content.bullets ?? [];
   const maxBlocks =
     input.maxThemeBlocksPerSlide ??
-    (tpl.maxBulletsPerSlide > 0 ? tpl.maxBulletsPerSlide : 2);
-  const bullets = input.base.content.bullets ?? [];
+    resolveMaxThemeBlocksPerSlide({
+      bullets,
+      templateId: input.templateId,
+      hasKpiChrome: (input.base.content.kpis?.length ?? 0) > 0,
+    });
   const rows = input.base.content.table?.rows ?? [];
   const narrativeBudget = getClientTextFieldBudgets().narrative;
   const narrative = input.base.content.narrative ?? "";
@@ -119,9 +146,13 @@ export function paginateThemeBlocks(input: {
         title: `${input.base.title} (продолжение ${i + 1}/${total})`,
         content: {
           ...content,
+          // Continuations are theme-only: drop scorecard chrome so long C6
+          // cards get the full page (KPI row on every cont caused p10 overflow).
           narrative: narrativeChunks[i] || undefined,
           whatWasFound: undefined,
           whyItMatters: undefined,
+          whatToCheck: undefined,
+          kpis: undefined,
         },
       });
     }
@@ -154,4 +185,75 @@ export function assertSemanticPaginationGatesPass(
       `CLIENT_TEXT_TRUNCATIONS=${report.CLIENT_TEXT_TRUNCATIONS}; ${report.samples.join(" | ")}`
     );
   }
+}
+
+type ThemePackLike = {
+  fragmentKey: string;
+  slides: SlideContentContract[];
+};
+
+const REPAGE_FRAGMENTS = new Set([
+  "RU_SUMMARY",
+  "UAE_SUMMARY",
+  "DIGITAL_PROFILE_OVERVIEW",
+]);
+
+/**
+ * Safety net after GPT / stale cache: flatten theme bullets for each
+ * regional-summary base + continuations and re-chunk with density-aware limits
+ * so the Python renderer never sees 3+ long cards on one metrics page.
+ */
+export function repaginateThemeBearingPacks(packs: ThemePackLike[]): number {
+  let repaired = 0;
+  for (const pack of packs) {
+    if (!REPAGE_FRAGMENTS.has(pack.fragmentKey)) continue;
+    const bases = pack.slides.filter(
+      (s) => s.templateId === "regional-summary" && !s.isContinuation
+    );
+    for (const base of bases) {
+      const conts = pack.slides
+        .filter((s) => s.isContinuation && s.continuationOf === base.slideId)
+        .sort((a, b) => (a.continuationIndex ?? 0) - (b.continuationIndex ?? 0));
+      const allBullets = [
+        ...(base.content.bullets ?? []),
+        ...conts.flatMap((c) => c.content.bullets ?? []),
+      ];
+      if (allBullets.length === 0) continue;
+      const maxBlocks = resolveMaxThemeBlocksPerSlide({
+        bullets: allBullets,
+        templateId: "regional-summary",
+        hasKpiChrome: (base.content.kpis?.length ?? 0) > 0,
+      });
+      const expectedPages = Math.max(1, Math.ceil(allBullets.length / maxBlocks));
+      const pageBulletCounts = [base, ...conts].map((s) => s.content.bullets?.length ?? 0);
+      const ok =
+        pageBulletCounts.length === expectedPages &&
+        pageBulletCounts.every((n) => n <= maxBlocks) &&
+        pageBulletCounts.reduce((a, b) => a + b, 0) === allBullets.length;
+      if (ok) continue;
+
+      const { slides: rebuilt } = paginateThemeBlocks({
+        base: {
+          ...base,
+          isContinuation: false,
+          continuationOf: undefined,
+          continuationIndex: undefined,
+          content: { ...base.content, bullets: allBullets },
+        },
+        templateId: "regional-summary",
+        maxThemeBlocksPerSlide: maxBlocks,
+      });
+      const baseIdx = pack.slides.findIndex((s) => s.slideId === base.slideId);
+      if (baseIdx < 0) continue;
+      pack.slides = [
+        ...pack.slides.slice(0, baseIdx),
+        ...rebuilt,
+        ...pack.slides
+          .slice(baseIdx + 1)
+          .filter((s) => !(s.isContinuation && s.continuationOf === base.slideId)),
+      ];
+      repaired += 1;
+    }
+  }
+  return repaired;
 }
