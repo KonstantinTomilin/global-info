@@ -27,8 +27,16 @@ export function countIncompleteSentences(text: string): number {
     .map((s) => s.replace(/·/gu, ".").trim())
     .filter(Boolean);
 
+  const isStructuredScanLine = (p: string): boolean =>
+    /^(Всего по теме|В корпусе|Где видно|Источник|Ключевой материал|Что проверить|Что делать|Другие материалы о субъекте)\s*:/iu.test(
+      p
+    );
+
   let n = 0;
   for (const p of parts) {
+    // Inventory / scan lines first — SERP titles inside them may contain «…».
+    if (isStructuredScanLine(p)) continue;
+
     // Ellipsis mid-cut — only long prose (short SERP headlines often end with «…»).
     if (/(?:\.\.\.|…)$/u.test(p)) {
       const stem = p.replace(/(?:\.\.\.|…)$/u, "").trim();
@@ -42,14 +50,6 @@ export function countIncompleteSentences(text: string): number {
       continue;
     }
 
-    // Structured ORION scan lines are complete without a final period.
-    if (
-      /^(Всего по теме|В корпусе|Где видно|Источник|Ключевой материал|Что проверить|Что делать|Другие материалы о субъекте)\s*:/iu.test(
-        p
-      )
-    ) {
-      continue;
-    }
     // Quote attribution line: «…» — источник domain.com (domain optional after strip).
     if (/»\s*—\s*источник\b/iu.test(p) || /—\s*источник\b/iu.test(p)) {
       continue;
