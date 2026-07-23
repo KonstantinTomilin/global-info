@@ -185,7 +185,7 @@ def _render_slide(ctx: _Ctx, slide: dict[str, Any], assets: dict[str, dict[str, 
                 )
                 y += 100_000
             if bullets:
-                ctx.bullets(bullets, y, max_items=6, max_chars=900)
+                ctx.bullets(bullets, y, max_items=2, max_chars=1600)
             return
         narr = narrative.strip()
         if narr and not bullets:
@@ -215,7 +215,7 @@ def _render_slide(ctx: _Ctx, slide: dict[str, Any], assets: dict[str, dict[str, 
             )
             y += 100_000
         if bullets:
-            ctx.bullets(bullets, y, max_items=6, max_chars=900)
+            ctx.bullets(bullets, y, max_items=2, max_chars=1600)
         return
 
     if template == "orion_golden_risk_matrix":
@@ -592,7 +592,7 @@ def _render_slide(ctx: _Ctx, slide: dict[str, Any], assets: dict[str, dict[str, 
             y = ctx.body(_clip_words(narrative, 760), y, max_h=1200000)
             y = y + 80000
         if bullets:
-            ctx.bullets(bullets, y, max_items=14, max_chars=340)
+            ctx.bullets(bullets, y, max_items=2, max_chars=1600)
         return
 
     # orion_golden_prose (continuation themes) + default section / appendix
@@ -608,6 +608,7 @@ def _render_slide(ctx: _Ctx, slide: dict[str, Any], assets: dict[str, dict[str, 
         y = ctx.body(short_narrative, y, max_h=1100000)
         y = y + 80000
     if bullets:
-        ctx.bullets(bullets, y, max_items=9, max_chars=900)
+        # Continuations / appendix theme cards — match TS density (2/page).
+        ctx.bullets(bullets, y, max_items=2, max_chars=1600)
 
 

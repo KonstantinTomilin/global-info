@@ -1027,13 +1027,30 @@ class _Ctx:
             )
             return int(raw_h * measure_slack) + 60_000
 
-        # C7 — theme blocks are atomic. Overflow must be fixed by TS
-        # continuation pagination, never by silently dropping bullets/lines.
+        # C7 — theme blocks are atomic. Prefer TS continuation pagination, but
+        # never fail the whole report when a page is slightly over budget
+        # (live Deripaska: p10/p35 RENDER_FAILED loops). Soft-fit by dropping
+        # whole trailing blocks until the page fits; keep at least one if possible.
+        dropped = 0
+        while len(kept) > 1 and _bullet_block_height(kept) > page_avail:
+            kept.pop()
+            dropped += 1
         if kept and _bullet_block_height(kept) > page_avail:
-            raise RuntimeError(
-                f"ORION bullet overflow on p{self.page}: "
-                f"{len(kept)} theme block(s) need { _bullet_block_height(kept) } "
-                f"EMU but only {page_avail} available; paginate to continuation"
+            # Single block still too tall: shrink char budget rather than 500.
+            sole = _clip_structured_bullet(kept[0], max(220, max_chars // 2))
+            if sole and _bullet_block_height([sole]) <= page_avail:
+                kept = [sole]
+                dropped += 1
+            else:
+                raise RuntimeError(
+                    f"ORION bullet overflow on p{self.page}: "
+                    f"1 theme block needs {_bullet_block_height(kept)} "
+                    f"EMU but only {page_avail} available; paginate to continuation"
+                )
+        if dropped:
+            self.warnings.append(
+                f"bullet-soft-fit:p{self.page}:dropped={dropped}; "
+                f"kept={len(kept)}; avail={page_avail}"
             )
         if not kept:
             return y

@@ -197,7 +197,8 @@ export const DECK_TEMPLATE_REGISTRY: Record<DeckTemplateId, DeckTemplateDef> = {
     templateId: "finding-cards",
     rendererTemplate: "orion_golden_executive_card",
     staticBlocks: FINDING_BLOCKS,
-    maxBulletsPerSlide: 6,
+    // Concrete C6 cards are tall — 6/page overflows (live RENDER p35).
+    maxBulletsPerSlide: 2,
     maxTableRowsPerSlide: 0,
     layout: layout("two-column", { itemCharBudget: 860 }),
   },
@@ -286,10 +287,11 @@ export const DECK_TEMPLATE_REGISTRY: Record<DeckTemplateId, DeckTemplateDef> = {
   },
   continuation: {
     templateId: "continuation",
-    rendererTemplate: "orion_golden_surface_panel",
+    // Prose directly — surface_panel without a visual was remapped to prose and
+    // then merged narrative+bullets into 6+ blocks (live RENDER p35 overflow).
+    rendererTemplate: "orion_golden_prose",
     staticBlocks: ["Продолжение"],
-    // PDF-46 I.3 — theme continuations stay airy; table rows still chunk separately.
-    maxBulletsPerSlide: 3,
+    maxBulletsPerSlide: 2,
     maxTableRowsPerSlide: 12,
     layout: layout("single-column", {}),
   },

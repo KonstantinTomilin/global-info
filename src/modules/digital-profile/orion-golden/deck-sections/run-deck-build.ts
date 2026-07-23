@@ -337,7 +337,10 @@ export function toRendererPayload(input: {
     const bullets = buildRendererBullets(s);
     // Default renderer layouts stack narrative and bullet boxes in the same
     // region; when both exist, fold narrative into the list to avoid overlap.
-    const mergedBullets = narrative && bullets ? [narrative, ...bullets] : bullets;
+    // Continuations must NOT merge — that turned 3 theme cards into 4–6+ and
+    // overflowed p35 (live Deripaska RENDER_FAILED).
+    const mergedBullets =
+      s.isContinuation || !narrative || !bullets ? bullets : [narrative, ...bullets];
 
     // Structured fields for renderer layouts that consume dashboards, not
     // plain bullet lists (existing renderer contracts, unchanged).

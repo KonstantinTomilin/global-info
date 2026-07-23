@@ -82,12 +82,15 @@ export function resolveMaxThemeBlocksPerSlide(input: {
   if (registryMax <= 0) return 1;
   const maxLen = Math.max(0, ...input.bullets.map((b) => String(b ?? "").length));
   const hasKpi = Boolean(input.hasKpiChrome);
-  if (input.templateId === "regional-summary") {
+  if (input.templateId === "regional-summary" || input.templateId === "finding-cards") {
     if (hasKpi && maxLen >= 360) return 1;
     if (maxLen >= 700) return 1;
-    if (hasKpi) return Math.min(2, registryMax);
+    if (hasKpi || maxLen >= 360) return Math.min(2, registryMax);
   }
-  return registryMax;
+  if (input.templateId === "continuation") {
+    return maxLen >= 360 ? 1 : Math.min(2, registryMax || 2);
+  }
+  return Math.min(registryMax, maxLen >= 500 ? 2 : registryMax);
 }
 
 /**
@@ -199,19 +202,28 @@ const REPAGE_FRAGMENTS = new Set([
   "RU_SUMMARY",
   "UAE_SUMMARY",
   "DIGITAL_PROFILE_OVERVIEW",
+  "EXECUTIVE_SUMMARY",
+  "APPENDIX_MAIN",
+  "COMPLIANCE_MAIN",
+]);
+
+const REPAGE_TEMPLATES = new Set([
+  "regional-summary",
+  "finding-cards",
+  "continuation",
 ]);
 
 /**
  * Safety net after GPT / stale cache: flatten theme bullets for each
- * regional-summary base + continuations and re-chunk with density-aware limits
- * so the Python renderer never sees 3+ long cards on one metrics page.
+ * theme-bearing base + continuations and re-chunk with density-aware limits
+ * so the Python renderer never sees 3+ long cards on one page.
  */
 export function repaginateThemeBearingPacks(packs: ThemePackLike[]): number {
   let repaired = 0;
   for (const pack of packs) {
     if (!REPAGE_FRAGMENTS.has(pack.fragmentKey)) continue;
     const bases = pack.slides.filter(
-      (s) => s.templateId === "regional-summary" && !s.isContinuation
+      (s) => REPAGE_TEMPLATES.has(s.templateId) && !s.isContinuation
     );
     for (const base of bases) {
       const conts = pack.slides
@@ -222,9 +234,10 @@ export function repaginateThemeBearingPacks(packs: ThemePackLike[]): number {
         ...conts.flatMap((c) => c.content.bullets ?? []),
       ];
       if (allBullets.length === 0) continue;
+      const templateId = base.templateId as DeckTemplateId;
       const maxBlocks = resolveMaxThemeBlocksPerSlide({
         bullets: allBullets,
-        templateId: "regional-summary",
+        templateId,
         hasKpiChrome: (base.content.kpis?.length ?? 0) > 0,
       });
       const expectedPages = Math.max(1, Math.ceil(allBullets.length / maxBlocks));
@@ -243,7 +256,10 @@ export function repaginateThemeBearingPacks(packs: ThemePackLike[]): number {
           continuationIndex: null,
           content: { ...base.content, bullets: allBullets },
         },
-        templateId: "regional-summary",
+        templateId:
+          templateId === "finding-cards" || templateId === "continuation"
+            ? templateId
+            : "regional-summary",
         maxThemeBlocksPerSlide: maxBlocks,
       });
       const baseIdx = pack.slides.findIndex((s) => s.slideId === base.slideId);

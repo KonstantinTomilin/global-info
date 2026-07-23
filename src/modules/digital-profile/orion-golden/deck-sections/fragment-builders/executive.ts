@@ -522,8 +522,8 @@ export function buildExecutiveSummaryFragment(
     );
   }
   if (contBullets.length > 0) {
-    // PDF-46 I.3 — 3 theme blocks per continuation page (block-first; more pages OK).
-    const THEME_PER_PAGE = 3;
+    // Concrete C6 briefs are taller than the old meta pointers — 2/page max.
+    const THEME_PER_PAGE = 2;
     const totalPages = Math.ceil(contBullets.length / THEME_PER_PAGE);
     for (let pageIdx = 0; pageIdx < totalPages; pageIdx += 1) {
       const chunk = contBullets.slice(pageIdx * THEME_PER_PAGE, (pageIdx + 1) * THEME_PER_PAGE);

@@ -104,8 +104,8 @@ describe("I.3 — pagination density", () => {
     expect(pages[1]).toHaveLength(2);
   });
 
-  it("continuation template caps theme bullets at 3", () => {
-    expect(DECK_TEMPLATE_REGISTRY.continuation.maxBulletsPerSlide).toBe(3);
+  it("continuation template caps theme bullets at 2", () => {
+    expect(DECK_TEMPLATE_REGISTRY.continuation.maxBulletsPerSlide).toBe(2);
   });
 });
 
