@@ -33,7 +33,7 @@ import {
 } from "./llm-slide-copy";
 import { reflowNarrativeParagraphs, reflowThemeBullet } from "./fragment-builders/shared";
 
-export const GPT_DECK_EDITOR_PROMPT_VERSION = "gpt-deck-editor-v1";
+export const GPT_DECK_EDITOR_PROMPT_VERSION = "gpt-deck-editor-v2";
 
 /** Prompt marker for offline smokes asserting the stage-3 editorial pass. */
 export const GPT_DECK_EDITOR_PROMPT_MARKER = "выпускающий редактор всего отчёта";
@@ -119,6 +119,7 @@ export function parseEditorResponse(raw: unknown): {
 const EDITOR_INSTRUCTIONS = [
   `Ты — ${GPT_DECK_EDITOR_PROMPT_MARKER} о цифровом профиле субъекта. Тебе передан клиентский текст ВСЕХ страниц уже собранного отчёта.`,
   "Твоя задача — редакторская связность между страницами: единая терминология (одни и те же темы называются одинаково), плавные переходы, отсутствие дословных повторов между соседними страницами, каждый блок заканчивается завершённым предложением с точкой.",
+  "C6: если на двух страницах один и тот же длинный абзац/whatToCheck — перепиши вторичную страницу своими словами с привязкой к её разделу; не снимай префиксы «По региону», «В разделе», «Статус по».",
   "НЕ добавляй новых фактов, чисел, имён, компаний и доменов; НЕ меняй смысл выводов и оценки рисков; НЕ вставляй URL.",
   "СТРОГО ЗАПРЕЩЕНО упоминать процесс подготовки отчёта: слова «черновик», «переданный фрагмент», «scoped», «findings» и рассуждения о твоей работе с материалами.",
   "Не трогай страницы, где текст честно сообщает, что поверхность не собиралась или проверена и пуста.",

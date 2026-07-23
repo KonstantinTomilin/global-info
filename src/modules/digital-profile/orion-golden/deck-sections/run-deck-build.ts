@@ -23,6 +23,7 @@ import {
   assertCrossSlideDedupeGatesPass,
   buildCrossSlideDedupeReport,
 } from "./cross-slide-dedupe-qa";
+import { repairCrossSlideDuplicateCopy } from "./cross-slide-dedupe-repair";
 import {
   assertSemanticPaginationGatesPass,
   countClientTextTruncations,
@@ -118,9 +119,15 @@ export function runDeckBuild(input: {
   }
 
   // C6 — cross-slide duplicate sentence / one-full-disclosure gate.
+  // Repair runs after GPT copy/editor: re-stamp surface/region scoped fields
+  // and uniquify any remaining shared long sentences before fail-closed assert.
   const disclosurePlan = ctx.extras.crossSlideDisclosurePlan ?? null;
   if (disclosurePlan) {
-    const dedupeReport = buildCrossSlideDedupeReport(packs, disclosurePlan);
+    const repair = repairCrossSlideDuplicateCopy(packs);
+    const dedupeReport = {
+      ...buildCrossSlideDedupeReport(packs, disclosurePlan),
+      repair,
+    };
     const dedupePath = join(input.outputRoot, "cross-slide-dedupe-report.json");
     writeFileSync(dedupePath, JSON.stringify(dedupeReport, null, 2), "utf8");
     artifacts["cross-slide-dedupe-report.json"] = dedupePath;

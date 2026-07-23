@@ -39,7 +39,7 @@ import { reflowNarrativeParagraphs, reflowThemeBullet } from "./fragment-builder
 import { isWeakExampleTitle } from "../analytics/finding-synthesizer";
 
 /** v16 — PDF-49: never drop evidence quotes ending in «…Дерипаски». */
-export const GPT_SLIDE_COPY_PROMPT_VERSION = "gpt-slide-copy-v16";
+export const GPT_SLIDE_COPY_PROMPT_VERSION = "gpt-slide-copy-v17";
 
 /** Mirrors section-validation budgets — from client-text-contract (§6.1). */
 export const GPT_SLIDE_COPY_FIELD_BUDGETS = (() => {
@@ -289,6 +289,7 @@ const COPY_INSTRUCTIONS = [
   "Для тематических bullets структура (каждый пункт — ОТДЕЛЬНАЯ строка через \\n, не склеивай в один абзац): 1) тема в «ёлочках», 2) короткая рамка «найдены публикации…» с якорем доменов при наличии, 3) 1–2 строки ««суть сюжета» — источник domain» (каждая цитата на своей строке), 4) «Всего по теме: N…», 5) одно предложение почему это важно / что делать.",
   "В narrative резюме: итог для проверки + 2–4 темы с опорой на конкретные сюжеты/источники из findings; без воды. Финал — что делать. Разбивай narrative на 2–3 абзаца через \\n — не пиши одной «простынёй».",
   "Не переписывай честные пустые состояния: если черновик говорит, что поверхность не собиралась / проверена и пуста / визуал недоступен — не подставляй findings с других поверхностей или регионов.",
+  "C6: не удаляй префиксы региона/поверхности («По региону «…»», «В разделе «…»», «Статус по …») и не делай whatToCheck/bullets дословно одинаковыми на разных страницах отчёта.",
   "Если передан compositionPlan — следуй ему: начни narrative с указанного смыслового акцента (storyAngle), раскрой в первую очередь темы из emphasisThemes (в заданном порядке) и упоминай прежде всего домены из keyDomains; план не добавляет новых фактов — используй только материал слайда.",
   'Верни ТОЛЬКО JSON: {"slides": [{"slideId": string, "narrative"?: string, "bullets"?: [string], "whatWasFound"?: string, "whyItMatters"?: string, "whatToCheck"?: string}]}. Не возвращай null, пустые строки и пустые массивы — неизменённое поле просто опускай. Опускай слайд целиком, если поверхность пустая и черновик честно сообщает об отсутствии данных.',
 ].join(" ");

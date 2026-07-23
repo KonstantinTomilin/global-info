@@ -162,7 +162,7 @@ describe("I.4 — structured fit preserves meta", () => {
 
 describe("I.5 — versions", () => {
   it("bumps GPT slide-copy prompt", () => {
-    expect(GPT_SLIDE_COPY_PROMPT_VERSION).toBe("gpt-slide-copy-v16");
+    expect(GPT_SLIDE_COPY_PROMPT_VERSION).toBe("gpt-slide-copy-v17");
   });
 });
 

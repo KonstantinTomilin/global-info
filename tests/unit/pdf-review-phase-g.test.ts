@@ -107,8 +107,8 @@ describe("G.1b / G.2 — client claim shape", () => {
     expect(body).toContain("Всего по теме:");
   });
 
-  it("slide-copy prompt is v16 (PDF-49 keep evidence quotes)", () => {
-    expect(GPT_SLIDE_COPY_PROMPT_VERSION).toBe("gpt-slide-copy-v16");
+  it("slide-copy prompt is v17 (C6 no cross-slide copy collapse)", () => {
+    expect(GPT_SLIDE_COPY_PROMPT_VERSION).toBe("gpt-slide-copy-v17");
   });
 
   it("reflowThemeBullet restores flattened G.2b quote lines (PDF-43)", () => {

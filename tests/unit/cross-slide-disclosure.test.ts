@@ -7,6 +7,7 @@ import {
   assertCrossSlideDedupeGatesPass,
   inspectCrossSlideDuplicateSentences,
 } from "../../src/modules/digital-profile/orion-golden/deck-sections/cross-slide-dedupe-qa";
+import { repairCrossSlideDuplicateCopy } from "../../src/modules/digital-profile/orion-golden/deck-sections/cross-slide-dedupe-repair";
 import {
   buildPageEvidenceView,
   pageFindingBlocks,
@@ -279,6 +280,82 @@ describe("C6 cross-slide disclosure", () => {
     expect(() =>
       assertCrossSlideDedupeGatesPass({
         ...report,
+        MATERIALS_WITHOUT_FULL_DISCLOSURE: 0,
+        MATERIALS_WITH_MULTIPLE_FULL_DISCLOSURES: 0,
+      })
+    ).not.toThrow();
+  });
+
+  it("repairs live-style GPT/boilerplate duplicates before the C6 gate", () => {
+    const action =
+      "Проверить статусы дел по судебным картотекам и официальным источникам; собрать документы о прекращении или исходе.";
+    const packs = [
+      {
+        fragmentKey: "RU_SUMMARY",
+        slides: [
+          {
+            content: {
+              bullets: [
+                "Материалы, вероятно относящиеся к субъекту: 37 — пока не включаем в подтверждённый итог до уточнения идентификации.",
+              ],
+              whatToCheck: action,
+            },
+          },
+        ],
+      },
+      {
+        fragmentKey: "UAE_SUMMARY",
+        slides: [
+          {
+            content: {
+              bullets: [
+                "Материалы, вероятно относящиеся к субъекту: 37 — пока не включаем в подтверждённый итог до уточнения идентификации.",
+              ],
+              whatToCheck: action,
+            },
+          },
+        ],
+      },
+      {
+        fragmentKey: "RU_IMAGES",
+        slides: [
+          {
+            content: {
+              statusNote:
+                "Статус: тема подтверждена, уровень внимания — критический; достоверность оценки высокая.",
+              whatToCheck: action,
+            },
+          },
+        ],
+      },
+      {
+        fragmentKey: "RU_SERP",
+        slides: [
+          {
+            content: {
+              statusNote:
+                "Статус: тема подтверждена, уровень внимания — критический; достоверность оценки высокая.",
+              whatToCheck: action,
+            },
+          },
+        ],
+      },
+    ] as unknown as SectionPackV2[];
+
+    expect(inspectCrossSlideDuplicateSentences(packs).CROSS_SLIDE_DUPLICATE_SENTENCES).toBeGreaterThan(
+      0
+    );
+    const repair = repairCrossSlideDuplicateCopy(packs);
+    expect(repair.after).toBe(0);
+    expect(repair.repairedFields).toBeGreaterThan(0);
+    expect(packs[0]!.slides[0]!.content.bullets![0]).toMatch(/По региону «Россия»/u);
+    expect(packs[1]!.slides[0]!.content.bullets![0]).toMatch(/По региону «ОАЭ/u);
+    expect(packs[2]!.slides[0]!.content.statusNote).toMatch(/блоку изображений/u);
+    expect(packs[3]!.slides[0]!.content.statusNote).toMatch(/поисковой выдаче/u);
+    expect(packs[3]!.slides[0]!.content.whatToCheck).not.toEqual(action);
+    expect(() =>
+      assertCrossSlideDedupeGatesPass({
+        ...inspectCrossSlideDuplicateSentences(packs),
         MATERIALS_WITHOUT_FULL_DISCLOSURE: 0,
         MATERIALS_WITH_MULTIPLE_FULL_DISCLOSURES: 0,
       })
