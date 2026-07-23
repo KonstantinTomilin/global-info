@@ -272,20 +272,29 @@ export function evaluateContentQuality(input: ContentQualityEvalInput): ContentQ
   let tech = 0;
   let incomplete = 0;
   const incompleteSamples: string[] = [];
-  for (const t of allClientTexts) {
-    tech += countTechnicalTokens(t);
-    // Only strip QA `[finding-…]` markers — do NOT strip domains here
-    // (that previously turned «… — источник reuters.com» into a false incomplete).
-    const prose = stripFindingMarkersOnly(t);
-    const n = countIncompleteSentences(prose);
-    incomplete += n;
-    if (n > 0 && incompleteSamples.length < 8) {
-      for (const s of sampleIncompleteSentences(prose, 2)) {
-        if (incompleteSamples.length >= 8) break;
-        incompleteSamples.push(s);
+  // Packs embed SERP titles (provider `...`) — lenient. Composed prose — strict.
+  const incompleteBuckets: Array<{ texts: string[]; mode: "pack" | "prose" }> = [
+    { texts: packTexts, mode: "pack" },
+    { texts: composedTexts, mode: "prose" },
+  ];
+  for (const bucket of incompleteBuckets) {
+    for (const t of bucket.texts) {
+      tech += countTechnicalTokens(t);
+      const prose = stripFindingMarkersOnly(t);
+      const n = countIncompleteSentences(prose, { mode: bucket.mode });
+      incomplete += n;
+      if (n > 0 && incompleteSamples.length < 8) {
+        for (const s of sampleIncompleteSentences(prose, 2, { mode: bucket.mode })) {
+          if (incompleteSamples.length >= 8) break;
+          incompleteSamples.push(s);
+        }
       }
     }
   }
+  // Tech tokens were double-counted when looping packs+composed separately above —
+  // recompute once over the combined client texts.
+  tech = 0;
+  for (const t of allClientTexts) tech += countTechnicalTokens(t);
 
   const trunc = countClientTextTruncations(themeTexts);
 

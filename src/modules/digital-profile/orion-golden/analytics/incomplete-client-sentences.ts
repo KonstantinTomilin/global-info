@@ -5,6 +5,15 @@
 
 import { hasDanglingTail } from "./finding-synthesizer";
 
+export type IncompleteSentenceOpts = {
+  /**
+   * `prose` (default) — strict C5 composed copy (ellipsis mid-cuts fail).
+   * `pack` — SectionPack client text may embed SERP titles that end with
+   * provider `...` / `…`; those must not fail C8 (live Deripaska =1).
+   */
+  mode?: "prose" | "pack";
+};
+
 /**
  * Detect real mid-cuts in composed prose.
  * Do NOT reuse isIncompleteClientQuote (SERP titles): it flags length under 12
@@ -13,7 +22,11 @@ import { hasDanglingTail } from "./finding-synthesizer";
  * Sentences that already end with `.!?` are treated as complete — trailing
  * ellipsis / odd ASCII quotes inside a closed sentence must not fail C5.
  */
-export function countIncompleteSentences(text: string): number {
+export function countIncompleteSentences(
+  text: string,
+  opts?: IncompleteSentenceOpts
+): number {
+  const mode = opts?.mode ?? "prose";
   const normalized = String(text ?? "").replace(/\s+/gu, " ").trim();
   if (!normalized) return 0;
 
@@ -37,8 +50,9 @@ export function countIncompleteSentences(text: string): number {
     // Inventory / scan lines first — SERP titles inside them may contain «…».
     if (isStructuredScanLine(p)) continue;
 
-    // Ellipsis mid-cut — only long prose (short SERP headlines often end with «…»).
+    // Provider / SERP ellipsis: in pack mode never fail (titles are truncated by design).
     if (/(?:\.\.\.|…)$/u.test(p)) {
+      if (mode === "pack") continue;
       const stem = p.replace(/(?:\.\.\.|…)$/u, "").trim();
       if (p.length >= 48 || hasDanglingTail(stem) || /[,;]$/u.test(stem)) n += 1;
       continue;
@@ -80,9 +94,13 @@ export function countIncompleteSentences(text: string): number {
 }
 
 /** Offending fragments for gate diagnostics (max a few). */
-export function sampleIncompleteSentences(text: string, limit = 3): string[] {
+export function sampleIncompleteSentences(
+  text: string,
+  limit = 3,
+  opts?: IncompleteSentenceOpts
+): string[] {
   const normalized = String(text ?? "").replace(/\s+/gu, " ").trim();
-  if (!normalized || countIncompleteSentences(normalized) === 0) return [];
+  if (!normalized || countIncompleteSentences(normalized, opts) === 0) return [];
   const protectedText = normalized
     .replace(/\b(см|См|т|д|п|др|ул|г|гг|проф|ст|ед|им)\./gu, "$1·")
     .replace(/\b([A-ZА-ЯЁ])\.(?=\s+[A-ZА-ЯЁa-zа-яё])/gu, "$1·");
@@ -92,10 +110,22 @@ export function sampleIncompleteSentences(text: string, limit = 3): string[] {
     .filter(Boolean);
   const out: string[] = [];
   for (const p of parts) {
-    if (countIncompleteSentences(p) > 0) {
+    if (countIncompleteSentences(p, opts) > 0) {
       out.push(p.length > 160 ? `${p.slice(0, 160)}…` : p);
       if (out.length >= limit) break;
     }
   }
   return out;
+}
+
+/** Strip provider truncation markers from SERP titles before embedding in packs. */
+export function sanitizeSerpTitleForClient(title: string, max = 80): string {
+  return String(title ?? "")
+    .replace(/\s+/gu, " ")
+    .trim()
+    .replace(/(?:\.\.\.|…)+\s*$/u, "")
+    .replace(/[,;:\s]+$/u, "")
+    .replace(/"/g, "«")
+    .slice(0, max)
+    .trim();
 }

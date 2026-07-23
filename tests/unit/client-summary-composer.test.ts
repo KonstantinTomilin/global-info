@@ -260,5 +260,19 @@ describe("C5 client-summary-composer", () => {
         'Другие материалы о субъекте: 342 (примеры: Вот Так Online · "Oleg Deripaska… · BBC News).'
       )
     ).toBe(0);
+    // Pack mode: long SERP title with provider `...` must not fail C8.
+    expect(
+      countIncompleteSentences(
+        "Обсудили эту и другие новости в новом выпуске «Вот Так Online» — видео целиком ...",
+        { mode: "pack" }
+      )
+    ).toBe(0);
+    // Prose mode: real mid-cut ellipsis still fails.
+    expect(
+      countIncompleteSentences(
+        "После публикации расследования ФБК об отдыхе Дерипаски…",
+        { mode: "prose" }
+      )
+    ).toBeGreaterThanOrEqual(1);
   });
 });

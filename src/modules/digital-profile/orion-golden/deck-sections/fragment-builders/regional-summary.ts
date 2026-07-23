@@ -13,6 +13,7 @@ import {
   bulletWithFindingIdAtomic,
   paginateThemeBlocks,
 } from "../semantic-summary-pagination";
+import { sanitizeSerpTitleForClient } from "../../analytics/incomplete-client-sentences";
 import {
   claimText,
   clampClientText,
@@ -52,17 +53,9 @@ function uncategorizedBulletForRegion(
   // Sanitize SERP titles so C8 incomplete-sentence scan does not trip on
   // provider ellipsis / odd ASCII quotes inside example lists (live =2 on RU+UAE).
   const titles = examples
-    .map((e) => e.title.trim())
+    .map((e) => sanitizeSerpTitleForClient(e.title, 80))
     .filter(Boolean)
-    .slice(0, 3)
-    .map((t) =>
-      clampClientText(t, 80)
-        .replace(/(?:\.\.\.|…)\s*$/u, "")
-        .replace(/[,;:\s]+$/u, "")
-        .replace(/"/g, "«")
-        .trim()
-    )
-    .filter(Boolean);
+    .slice(0, 3);
   const examplesNote = titles.length
     ? ` (примеры: ${titles.join(" · ")})`
     : "";
