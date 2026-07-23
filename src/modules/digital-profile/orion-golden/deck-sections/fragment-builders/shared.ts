@@ -1006,14 +1006,24 @@ export function resolveDisclosureClaimText(
 
   if (fragmentKey === "RU_SUMMARY" || fragmentKey === "UAE_SUMMARY") {
     if (fragmentKey === row.fullOwnerFragment) return row.fullText;
-    // Non-owner regional page must NOT reuse executive briefText — that is exactly
-    // what blew CROSS_SLIDE_DUPLICATE_SENTENCES (OVERVIEW+EXEC+RU) on live Deripaska.
+    // Non-owner keeps a concrete signal (not an empty meta pointer) but must not
+    // paste executive briefText or fullText — that re-triggers C6 duplicates.
     const ownerLabel =
       row.fullOwnerFragment === "UAE_SUMMARY" ? "международном" : "российском";
-    return (
-      `Тема «${row.themeLabel}» подробно раскрыта в ${ownerLabel} резюме; ` +
-      `на этой региональной странице полный текст не повторяется.`
-    );
+    const regionBit = fragmentKey === "UAE_SUMMARY" ? "международном" : "российском";
+    // Pull a short concrete clause from matrixText (already distinct framing).
+    const signalLine = String(row.matrixText ?? "")
+      .split("\n")
+      .map((l) => l.trim())
+      .find((l) => /^Сигнал:/u.test(l));
+    const signal = signalLine
+      ? signalLine.replace(/^Сигнал:\s*/u, "").trim()
+      : `тема «${row.themeLabel}» подтверждена в выдаче`;
+    return [
+      `«${row.themeLabel}»`,
+      `В ${regionBit} контуре: ${signal}`,
+      `Развёрнутый разбор с цитатами — в ${ownerLabel} резюме.`,
+    ].join("\n");
   }
   if (fragmentKey === "EXECUTIVE_SUMMARY" || fragmentKey === "DIGITAL_PROFILE_OVERVIEW") {
     // Executive cards are budget-capped (~900); never put full ORION prose here.

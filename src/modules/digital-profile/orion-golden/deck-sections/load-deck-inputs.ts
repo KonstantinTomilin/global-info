@@ -9,7 +9,7 @@
  * This is the canonical, universal counterpart of the report-72 replay loader.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { VerifiedFindingBundle } from "../contracts/verified-finding-bundle";
 import type { Finding } from "../contracts/finding";
@@ -25,6 +25,7 @@ import type {
   SurfaceCollectionHint,
 } from "./scoped-input";
 import { mapRegionBucket } from "../classic/composite-serp-overlay-merge";
+import { buildCrossSlideDisclosurePlan } from "../analytics/cross-slide-disclosure-planner";
 
 type CompositeObservationRow = {
   observationKey?: string;
@@ -451,11 +452,31 @@ export function loadDeckInputsFromAnalyticsDir(analyticsDir: string): CanonicalD
   };
 
   const disclosurePath = join(analyticsDir, "cross-slide-disclosure-plan.json");
-  const crossSlideDisclosurePlan = readOptionalJson<CrossSlideDisclosurePlan>(disclosurePath);
+  let crossSlideDisclosurePlan = readOptionalJson<CrossSlideDisclosurePlan>(disclosurePath);
 
   const composedClientSummary = readOptionalJson<ComposedClientSummary>(
     join(analyticsDir, "composed-client-summary.json")
   );
+  // Always rebuild C6 plan from composed summary when available so prepare-only
+  // rebuilds pick up concrete brief/matrix text (stale plan on disk emptied
+  // executive/résumé copy on live Deripaska PDF-51).
+  if (composedClientSummary) {
+    try {
+      crossSlideDisclosurePlan = buildCrossSlideDisclosurePlan({
+        caseId: binding.caseId,
+        datasetId: binding.datasetId,
+        composed: composedClientSummary,
+        findings: mergedBundle.findings,
+      });
+      writeFileSync(
+        disclosurePath,
+        `${JSON.stringify(crossSlideDisclosurePlan, null, 2)}\n`,
+        "utf8"
+      );
+    } catch {
+      // keep on-disk plan if rebuild fails
+    }
+  }
   const canonicalClaims = readOptionalJson<CanonicalClaimBundle>(
     join(analyticsDir, "canonical-claims.json")
   );

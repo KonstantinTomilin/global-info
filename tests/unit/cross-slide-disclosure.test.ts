@@ -185,6 +185,23 @@ describe("C6 cross-slide disclosure", () => {
     expect(plan.materials[0]!.fullOwnerFragment).toBe("RU_SUMMARY");
   });
 
+  it("keeps RU as full owner when finding is tagged RU+INTERNATIONAL", () => {
+    const plan = buildCrossSlideDisclosurePlan({
+      caseId: "c",
+      datasetId: "d",
+      composed: composed(),
+      findings: [
+        finding({
+          findingId: "finding-criminal",
+          theme: "Криминальные / судебные материалы",
+          regions: ["RU", "INTERNATIONAL"],
+        }),
+      ],
+    });
+    expect(plan.materials[0]!.fullOwnerFragment).toBe("RU_SUMMARY");
+    expect(plan.materials[0]!.briefText).toMatch(/Суть сигнала:/u);
+  });
+
   it("flags identical long sentences across fragments", () => {
     const dup =
       "По открытым СМИ выявлены существенные публикации по судебному сюжету, требующие проверки первичных документов немедленно.";
@@ -255,7 +272,12 @@ describe("C6 cross-slide disclosure", () => {
     expect(uae).toBe(m.fullText);
     expect(ru).not.toBe(m.briefText);
     expect(ru).not.toBe(m.fullText);
-    expect(ru).toMatch(/не повторяется/i);
+    expect(ru).toMatch(/Развёрнутый разбор/u);
+    expect(ru).toMatch(/контуре/u);
+    // Executive brief must stay concrete (allegation), not meta «зафиксирована тема».
+    expect(m.briefText).toMatch(/Суть сигнала:/u);
+    expect(m.briefText).not.toMatch(/зафиксирована тема/u);
+    expect(m.matrixText).toMatch(/Сигнал:/u);
 
     const packs = [
       {

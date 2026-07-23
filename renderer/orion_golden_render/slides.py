@@ -300,8 +300,8 @@ def _render_slide(ctx: _Ctx, slide: dict[str, Any], assets: dict[str, dict[str, 
                 )
                 y += 60_000
             if bullets:
-                # Match TS regional-summary density (max 2; long C6 cards → 1 via pagination).
-                ctx.bullets(bullets, y, max_items=2, max_chars=900)
+                # Match TS regional-summary density; allow full C6 owner prose.
+                ctx.bullets(bullets, y, max_items=2, max_chars=1600)
             return
         # PDF-40 G.4/G.5 / PDF-45 — scorecard → narrative → theme cards.
         # Fewer cards per page + higher char budget; overflow continues.
@@ -354,7 +354,7 @@ def _render_slide(ctx: _Ctx, slide: dict[str, Any], assets: dict[str, dict[str, 
             y += 50_000
         if bullets:
             # TS paginates long full-disclosure cards to 1/page; never paint 3 here.
-            ctx.bullets(bullets, y, max_items=2, max_chars=900)
+            ctx.bullets(bullets, y, max_items=2, max_chars=1600)
         return
 
     if template == "orion_golden_serp_screenshot":

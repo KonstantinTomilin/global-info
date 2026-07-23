@@ -168,15 +168,10 @@ export function buildRegionalSummaryFragment(
         : "Подтверждённых тем повышенного внимания в регионе немного — смотрите детализацию ниже.";
     // PDF-40 G.4 / PDF-46 I.3–I.4 — full multi-line claims; paginate via
     // withContinuations (2/page with KPI chrome). Never flatten+mid-cut.
-    // C6: when a disclosure plan exists, only host full-owner themes on this
-    // regional page — never paste executive briefText for foreign owners.
-    const plan = extras?.crossSlideDisclosurePlan;
-    const themeFindings = plan
-      ? scoped.findings.filter((f) => {
-          const row = plan.materials.find((m) => m.findingId === f.findingId);
-          return !row || row.fullOwnerFragment === key;
-        })
-      : scoped.findings;
+    // C6: owner gets fullText; non-owner gets a concrete regional pointer
+    // (resolveDisclosureClaimText). Do NOT drop non-owner themes — that left
+    // RU résumé empty when multi-region findings were owned by UAE (PDF-51).
+    const themeFindings = scoped.findings;
     const bullets = [
       ...themeFindings
         .slice(0, 8)

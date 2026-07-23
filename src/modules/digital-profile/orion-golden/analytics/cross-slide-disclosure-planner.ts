@@ -12,27 +12,55 @@ import {
 import { resolveThemeRef } from "./canonical-claim-builder";
 import { themeBlockToClaimText } from "./client-summary-composer";
 
+/** Keep brief/matrix concrete but shorter than full ORION prose. */
+function clipConcrete(text: string, max: number): string {
+  const flat = String(text ?? "")
+    .replace(/\s+/gu, " ")
+    .replace(/^В материале\s+\S+\s+(?:сообщается|утверждается)\s*—\s*/u, "")
+    .trim();
+  if (!flat) return "";
+  if (flat.length <= max) return /[.!?…]$/u.test(flat) ? flat : `${flat}.`;
+  const slice = flat.slice(0, max);
+  const punct = Math.max(slice.lastIndexOf(". "), slice.lastIndexOf("! "), slice.lastIndexOf("? "));
+  const cut = punct > 40 ? slice.slice(0, punct + 1).trim() : slice.replace(/\s+\S*$/u, "").trim();
+  return /[.!?…]$/u.test(cut) ? cut : `${cut}.`;
+}
+
 function briefFromBlock(block: ComposedThemeBlock): string {
-  // Distinct from fullText: never paste conclusion / why / recommendedChecks
-  // verbatim — that fails CROSS_SLIDE_DUPLICATE_SENTENCES vs RU/UAE_SUMMARY.
+  // Live Deripaska PDF-51 — previous meta brief («зафиксирована тема… полный
+  // разбор в разделе») emptied the executive of FBK/court concreteness.
+  // Brief must carry a real allegation + why, while staying shorter/distinct
+  // from fullText (different framing → C6 dedupe).
   const art = block.articles[0];
   const domains = block.articles.map((a) => a.domain).slice(0, 2).join(", ");
-  const lead = `В резюме зафиксирована тема «${block.themeLabel}»${domains ? ` (сигналы: ${domains})` : ""}; полный разбор — в тематическом разделе.`;
-  const example = art
-    ? `Ключевой материал: ${art.domain}.`
-    : "";
-  // Theme-specific: a shared checklist sentence across materials previously
-  // multiplied CROSS_SLIDE_DUPLICATE_SENTENCES when brief leaked onto RU_SUMMARY.
-  const action = `Чек-лист и разбор первоисточников по теме «${block.themeLabel}» — в региональном резюме.`;
-  return [lead, example, action].filter(Boolean).join("\n");
+  const allegation = art
+    ? clipConcrete(art.body, 260)
+    : clipConcrete(block.conclusion, 220);
+  const why = clipConcrete(art?.whyItMatters || block.whyItMatters, 160);
+  return [
+    `«${block.themeLabel}»`,
+    allegation ? `Суть сигнала: ${allegation}` : null,
+    why ? `Зачем это важно: ${why}` : null,
+    domains ? `Где видно: ${domains}.` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function matrixFromBlock(block: ComposedThemeBlock): string {
+  const art = block.articles[0];
   const domains = block.articles.map((a) => a.domain).slice(0, 2).join(", ");
+  const signal = art
+    ? clipConcrete(art.body, 200)
+    : clipConcrete(block.conclusion, 180);
   return [
-    `Матрица риска: тема «${block.themeLabel}» требует отдельной проверки${domains ? ` (сигналы: ${domains})` : ""}.`,
-    "Приоритет матрицы: уточнить первичные документы в тематическом резюме (без повтора полного текста).",
-  ].join("\n");
+    `«${block.themeLabel}»`,
+    signal ? `Сигнал: ${signal}` : null,
+    domains ? `Источники в матрице: ${domains}.` : null,
+    "Действие матрицы: сверить первичные документы и статус в тематическом резюме.",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function surfaceAnglesFromBlock(block: ComposedThemeBlock): MaterialDisclosure["surfaceAngles"] {
@@ -48,12 +76,13 @@ function surfaceAnglesFromBlock(block: ComposedThemeBlock): MaterialDisclosure["
 
 function pickFullOwner(finding: Finding): MaterialDisclosure["fullOwnerFragment"] {
   const regions = (finding.regions ?? []).map((r) => r.toUpperCase());
-  if (regions.some((r) => r === "UAE" || r === "INTERNATIONAL" || r === "GLOBAL")) {
-    return "UAE_SUMMARY";
-  }
-  // Full ORION paragraph belongs on a regional summary page (budget-safe cards
-  // on EXECUTIVE_SUMMARY cannot carry fullText — that fails section QA at 900).
-  if (regions.some((r) => r === "RU")) return "RU_SUMMARY";
+  const hasRu = regions.some((r) => r === "RU");
+  const hasIntl = regions.some((r) => r === "UAE" || r === "INTERNATIONAL" || r === "GLOBAL");
+  // Prefer RU when present. Prior logic sent any INTERNATIONAL tag to UAE_SUMMARY,
+  // which emptied the Russia résumé of full theme cards on multi-region findings
+  // (live Deripaska: RU summary had only uncategorized/likely boilerplate).
+  if (hasRu) return "RU_SUMMARY";
+  if (hasIntl) return "UAE_SUMMARY";
   return "RU_SUMMARY";
 }
 

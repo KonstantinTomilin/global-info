@@ -583,9 +583,13 @@ function applyOverrides(input: {
     tryField("whyItMatters", o.whyItMatters, TEXT_BUDGETS.whyItMatters);
     tryField("whatToCheck", o.whatToCheck, TEXT_BUDGETS.whatToCheck);
 
-    // Bullets stay deterministic when the slide has chunked continuations
-    // (rewriting only the base chunk would desynchronize the sequence).
-    if (o.bullets && !continuationBases.has(slide.slideId)) {
+    // Theme cards stay deterministic: GPT often collapsed ORION fullText to a
+    // bare theme title (live PDF-51 UAE résumé). Also skip when chunked.
+    const themeCardsLocked =
+      slide.templateId === "regional-summary" ||
+      slide.templateId === "risk-matrix" ||
+      continuationBases.has(slide.slideId);
+    if (o.bullets && !themeCardsLocked) {
       const draftBullets = slide.content.bullets ?? [];
       const reflowed = o.bullets.map((b) => reflowThemeBullet(b.trim()));
       const reasons = reflowed
