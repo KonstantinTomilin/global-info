@@ -602,12 +602,11 @@ export async function pumpResumableUnifiedCollections(deps: UnifiedOrchestratorD
       job.stage === "ARSENKIN_ENRICHMENT" &&
       (job.status === "WAITING" || job.status === "RUNNING") &&
       job.resumeCheckpoint === "ARSENKIN_RESULT_INGEST";
-    const prepareInFlight =
-      (job.stage === "ORION_PREPARE" || job.stage === "CLIENT_CONTENT") &&
-      job.status === "RUNNING";
+    // Do not pump ORION_PREPARE from the launcher parent — Next owns that tick
+    // after Continue (parent/Next lease fights → unified_tick_lease_miss spam).
     const earlyPipeline =
       job.stage === "BASE_COLLECTION" || job.stage === "COMPOSITE_MERGE";
-    if (!arsenkinIngest && !prepareInFlight && !earlyPipeline) {
+    if (!arsenkinIngest && !earlyPipeline) {
       continue;
     }
     if (scheduleUnifiedTick(caseId, deps)) scheduled += 1;

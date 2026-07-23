@@ -48,8 +48,13 @@ function isAssemblyRecovery(job: UnifiedCollectionJobStatus | null): boolean {
   if (!job) return false;
   return (
     job.recoveryReason === "ASSEMBLY_RESUME" ||
+    job.recoveryReason === "CLIENT_SUMMARY_RESUME" ||
     job.lastErrorCode === "ASSEMBLY_FAILED" ||
-    job.lastErrorCode === "REQUIRED_SECTION_FAILED"
+    job.lastErrorCode === "REQUIRED_SECTION_FAILED" ||
+    job.lastErrorCode === "CLIENT_SUMMARY_GATE_FAILED" ||
+    /CROSS_SLIDE_DUPLICATE|SUMMARY_INCOMPLETE|CLIENT_INCOMPLETE|CLIENT_TEXT_TRUNCATIONS/i.test(
+      `${job.lastErrorCode ?? ""} ${job.lastError ?? ""}`
+    )
   );
 }
 

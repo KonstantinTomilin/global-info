@@ -12,37 +12,25 @@ import {
 import { resolveThemeRef } from "./canonical-claim-builder";
 import { themeBlockToClaimText } from "./client-summary-composer";
 
-function firstSentence(text: string, maxLen = 220): string {
-  const t = text.replace(/\s+/gu, " ").trim();
-  const m = t.match(/^(.+?[.!?…])(?:\s|$)/u);
-  const s = (m?.[1] ?? t).trim();
-  if (s.length <= maxLen) return s;
-  const cut = s.slice(0, maxLen);
-  const sp = cut.lastIndexOf(" ");
-  // Prefer a complete shorter clause without ellipsis (C7 truncation gate).
-  return `${(sp > 40 ? cut.slice(0, sp) : cut).trim()}.`;
-}
-
 function briefFromBlock(block: ComposedThemeBlock): string {
-  // Distinct from fullText: no shared conclusion/why sentences (C6 dedupe gate).
+  // Distinct from fullText: never paste conclusion / why / recommendedChecks
+  // verbatim — that fails CROSS_SLIDE_DUPLICATE_SENTENCES vs RU/UAE_SUMMARY.
   const art = block.articles[0];
   const domains = block.articles.map((a) => a.domain).slice(0, 2).join(", ");
   const lead = `В резюме зафиксирована тема «${block.themeLabel}»${domains ? ` (сигналы: ${domains})` : ""}; полный разбор — в тематическом разделе.`;
   const example = art
     ? `Ключевой материал: ${art.domain}.`
     : "";
-  const action = block.recommendedChecks[0]
-    ? `Дальше: ${firstSentence(block.recommendedChecks[0], 120)}`
-    : "";
+  const action =
+    "Чек-лист и разбор первоисточников — в региональном резюме по этой теме.";
   return [lead, example, action].filter(Boolean).join("\n");
 }
 
 function matrixFromBlock(block: ComposedThemeBlock): string {
   const domains = block.articles.map((a) => a.domain).slice(0, 2).join(", ");
-  const check = block.recommendedChecks[0] ?? "Проверить первоисточники по теме";
   return [
     `Матрица риска: тема «${block.themeLabel}» требует отдельной проверки${domains ? ` (сигналы: ${domains})` : ""}.`,
-    `Приоритетное действие: ${firstSentence(check, 140)}`,
+    "Приоритет матрицы: уточнить первичные документы в тематическом резюме (без повтора полного текста).",
   ].join("\n");
 }
 

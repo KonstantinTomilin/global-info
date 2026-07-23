@@ -175,4 +175,48 @@ describe("C6 cross-slide disclosure", () => {
     const report = inspectCrossSlideDuplicateSentences(packs);
     expect(report.CROSS_SLIDE_DUPLICATE_SENTENCES).toBe(0);
   });
+
+  it("allows shared brief among overview/executive but not leak into RU_SUMMARY", () => {
+    const brief =
+      "В резюме зафиксирована тема «Криминальные / судебные материалы» (сигналы: echofm.online); полный разбор — в тематическом разделе.";
+    const full =
+      "По открытым СМИ по теме «Криминальные / судебные материалы» выявлены существенные публикации (echofm.online), требующие проверки первичных документов.";
+    const sharedBriefPacks = [
+      {
+        fragmentKey: "DIGITAL_PROFILE_OVERVIEW",
+        slides: [{ content: { bullets: [brief] } }],
+      },
+      {
+        fragmentKey: "EXECUTIVE_SUMMARY",
+        slides: [{ content: { bullets: [brief] } }],
+      },
+    ] as unknown as SectionPackV2[];
+    expect(
+      inspectCrossSlideDuplicateSentences(sharedBriefPacks).CROSS_SLIDE_DUPLICATE_SENTENCES
+    ).toBe(0);
+
+    const leaked = [
+      ...sharedBriefPacks,
+      {
+        fragmentKey: "RU_SUMMARY",
+        slides: [{ content: { bullets: [brief] } }],
+      },
+    ] as unknown as SectionPackV2[];
+    expect(inspectCrossSlideDuplicateSentences(leaked).CROSS_SLIDE_DUPLICATE_SENTENCES).toBeGreaterThanOrEqual(1);
+
+    const plan = buildCrossSlideDisclosurePlan({
+      caseId: "c",
+      datasetId: "d",
+      composed: composed(),
+      findings: [
+        finding({
+          findingId: "finding-criminal",
+          theme: "Криминальные / судебные материалы",
+          regions: ["RU"],
+        }),
+      ],
+    });
+    expect(plan.materials[0]!.briefText).not.toMatch(/Сверить первоисточник/i);
+    expect(plan.materials[0]!.briefText).not.toContain(full.slice(0, 40));
+  });
 });

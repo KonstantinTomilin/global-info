@@ -251,6 +251,25 @@ export async function evaluateUnifiedCollectionRecoveryEligibility(input: {
   }
 
   if (job.stage === "FAILED_RETRYABLE") {
+    // Editorial / deck gates with intact composite must resume prepare — never
+    // bounce the operator back to Arsenkin (CLIENT_SUMMARY_GATE_FAILED live bug).
+    const isClientSummaryGate =
+      job.lastErrorCode === "CLIENT_SUMMARY_GATE_FAILED" ||
+      /SUMMARY_INCOMPLETE_SENTENCES|SUMMARY_TECHNICAL_COPY|CLIENT_INCOMPLETE_SENTENCES|CLIENT_TEXT_TRUNCATIONS|CROSS_SLIDE_DUPLICATE/i.test(
+        `${job.lastErrorCode ?? ""} ${job.lastError ?? ""}`
+      );
+    if (
+      isClientSummaryGate &&
+      Boolean(job.compositeDatasetId) &&
+      Boolean(job.baseReportRunId) &&
+      manifestHasBaseObservations(manifest)
+    ) {
+      return {
+        recoveryAllowed: true,
+        recoveryBlockerReason: null,
+        recoveryReason: "CLIENT_SUMMARY_RESUME",
+      };
+    }
     return {
       recoveryAllowed: true,
       recoveryBlockerReason: null,

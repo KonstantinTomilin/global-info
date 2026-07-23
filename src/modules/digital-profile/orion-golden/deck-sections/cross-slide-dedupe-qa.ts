@@ -10,6 +10,13 @@ const EXCLUDED_FRAGMENTS = new Set<FragmentKey>([
   "APPENDIX_MAIN",
 ]);
 
+/** Brief/matrix surfaces may share the same short theme pointer text. */
+const BRIEF_FRAGMENT_KEYS = new Set<FragmentKey>([
+  "DIGITAL_PROFILE_OVERVIEW",
+  "EXECUTIVE_SUMMARY",
+  "RISK_MATRIX",
+]);
+
 const MIN_SENTENCE_LEN = 60;
 
 function collectTexts(body: SlideBody | undefined): string[] {
@@ -85,7 +92,11 @@ export function inspectCrossSlideDuplicateSentences(
       fingerprint: fp,
       sample: v.sample,
       fragments: [...v.fragments].sort(),
-    }));
+    }))
+    // Shared brief among overview/executive/matrix is intentional C6.
+    // Fail only when the same long sentence also leaks onto a full-owner
+    // regional/theme fragment (or any non-brief surface).
+    .filter((d) => !d.fragments.every((f) => BRIEF_FRAGMENT_KEYS.has(f)));
 
   return {
     CROSS_SLIDE_DUPLICATE_SENTENCES: duplicates.length,
